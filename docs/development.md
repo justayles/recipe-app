@@ -32,7 +32,7 @@ This repo uses **npm** (`package-lock.json`), not bun. Use `npx`, not `bunx`.
 
 ## Expo Go vs a development build
 
-Expo Go includes only the native modules it ships. Recipeek currently stays inside that set (Router, Image, ImagePicker, ImageManipulator, IntentLauncher, Clipboard, Font, Linking). **Scan and camera work in Expo Go.**
+Expo Go includes only the native modules it ships. Recipeek currently stays inside that set (Router, Image, ImagePicker, ImageManipulator, IntentLauncher, Clipboard, Font, Linking, Localization). **Scan and camera work in Expo Go.** `posthog-react-native` uses those Expo packages; it does not need a development build.
 
 Add a library with extra native code and Expo Go will not load it. Then you need:
 
@@ -50,8 +50,8 @@ Share-from-browser (`recipeek://import?url=`) is the feature most likely to need
 
 | File | Loaded by | Contains |
 | --- | --- | --- |
-| `.env` (repo root) | Expo / Metro | `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_KEY` |
-| `supabase/functions/.env` | Local Edge Functions on `supabase start` | `OPENAI_API_KEY` |
+| `.env` (repo root) | Expo / Metro | `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_KEY`, `EXPO_PUBLIC_POSTHOG_KEY`, `EXPO_PUBLIC_POSTHOG_HOST` |
+| `supabase/functions/.env` | Local Edge Functions on `supabase start` | `OPENAI_API_KEY`, `POSTHOG_API_KEY`, `POSTHOG_HOST` |
 | `supabase/.env` | Not the functions runtime (easy to confuse) | Prefer `functions/.env` |
 | `*.example` | Humans | Placeholders only — never a real `sk-proj-` key |
 

@@ -92,7 +92,7 @@ If the function fails, the client falls back to fetching the page directly from 
 
 ### Scan (photo)
 
-Import tab → Scan → camera or library → compress the page photo → `scan-recipe` Edge Function:
+Import tab → Scan (only if PostHog flag `recipe-scan` is on) → camera or library → compress the page photo → `scan-recipe` Edge Function:
 
 1. `gpt-6-luna` reads the page into the same JSON shape as URL import, plus whether the page has a dish photo and a crop box.
 2. If that crop is usable, the app uses the dish shot from the page. Otherwise `gpt-image-2.5-sunburst` generates one.

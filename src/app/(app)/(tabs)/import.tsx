@@ -9,6 +9,7 @@ import { Button, ErrorText, errorMessage } from '@/components/ui';
 import { canRetryUrlImport, importedToDraft, importRecipeFromUrl } from '@/lib/import-recipe';
 import { displayFont, uiFont } from '@/lib/fonts';
 import { choosePhotoSource } from '@/lib/pick-photo';
+import { useRecipeScanEnabled } from '@/lib/posthog';
 import { setRecipeDraft } from '@/lib/recipe-draft';
 import { scanRecipeFromImage } from '@/lib/scan-recipe';
 import { useTheme } from '@/lib/theme';
@@ -16,6 +17,7 @@ import { useTheme } from '@/lib/theme';
 export default function ImportScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const scanEnabled = useRecipeScanEnabled();
   const params = useLocalSearchParams<{ url?: string }>();
   const [url, setUrl] = useState(typeof params.url === 'string' ? params.url : '');
   const [busy, setBusy] = useState<'import' | 'scan' | 'ai' | null>(null);
@@ -68,6 +70,7 @@ export default function ImportScreen() {
   }
 
   async function scanNow() {
+    if (!scanEnabled) return;
     const source = await choosePhotoSource({
       title: 'Scan a recipe',
       message:
@@ -123,19 +126,23 @@ export default function ImportScreen() {
             disabled={!url.trim() || busy != null}
             style={styles.flex}
           />
-          <Button
-            title="Scan"
-            variant="secondary"
-            onPress={scanNow}
-            loading={busy === 'scan'}
-            disabled={busy != null}
-            style={styles.flex}
-          />
+          {scanEnabled ? (
+            <Button
+              title="Scan"
+              variant="secondary"
+              onPress={scanNow}
+              loading={busy === 'scan'}
+              disabled={busy != null}
+              style={styles.flex}
+            />
+          ) : null}
         </View>
-        <Text style={[styles.copy, { color: theme.textMuted }]}>
-          Scan photographs a magazine or cookbook page and reads the ingredients and method. If the
-          page has a photo of the dish, that is used; otherwise Recipeek generates one.
-        </Text>
+        {scanEnabled ? (
+          <Text style={[styles.copy, { color: theme.textMuted }]}>
+            Scan photographs a magazine or cookbook page and reads the ingredients and method. If the
+            page has a photo of the dish, that is used; otherwise Recipeek generates one.
+          </Text>
+        ) : null}
         <ErrorText message={error} />
         {error && canRetryUrlImport(url) ? (
           <>

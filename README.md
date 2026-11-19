@@ -65,6 +65,8 @@ npm run db:stop && npm run db:start
 
 Local functions read `supabase/functions/.env`. Do not run `npx supabase secrets set` for local Docker — that command has no `--local` flag and would upload the key to a linked hosted project.
 
+Scan is behind the PostHog flag `recipe-scan`. Create that boolean flag and enable it for your user, and set `EXPO_PUBLIC_POSTHOG_KEY` / `EXPO_PUBLIC_POSTHOG_HOST` in `.env`. Details in [docs/openai.md](./docs/openai.md).
+
 1. On the Import tab, tap **Scan** and photograph the page (or pick a photo). Crop to the recipe if you can.
 2. `gpt-6-luna` extracts title, ingredients, steps and times into the same recipe shape as URL import.
 3. If the page has a usable dish photo, that crop is used. Otherwise `gpt-image-2.5-sunburst` generates a low-quality 1024×1024 photo (about half a cent).

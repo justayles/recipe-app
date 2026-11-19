@@ -4,6 +4,18 @@ OpenAI is used by `scan-recipe` (always) and by `import-recipe` only when the cl
 
 See also [overview.md](./overview.md) and [supabase.md](./supabase.md) for how secrets are loaded.
 
+## Feature flag (`recipe-scan`)
+
+The Scan button and the `scan-recipe` function are off unless the PostHog boolean flag **`recipe-scan`** is true for the signed-in user. URL import is not gated.
+
+While flags are loading, or if PostHog is not configured, Scan stays hidden. The Edge Function also checks the same flag and returns 403 if it is off, so the camera path cannot be invoked around the UI.
+
+1. In PostHog: **Feature flags → New** → key `recipe-scan` (boolean). Enable it for the people who should see Scan (or 100% when you are ready).
+2. App `.env`: `EXPO_PUBLIC_POSTHOG_KEY` (project `phc_…` key) and `EXPO_PUBLIC_POSTHOG_HOST` (`https://us.i.posthog.com` or `https://eu.i.posthog.com`). Restart Metro.
+3. Functions already use `POSTHOG_API_KEY` / `POSTHOG_HOST` in `supabase/functions/.env` (same project). After changing `scan-recipe`, deploy it.
+
+The app identifies as the Supabase user id so you can target that person in PostHog. Autocapture of screens and touches is off; this provider exists for flags.
+
 ## Why two models
 
 A single OpenAI call cannot return both strict JSON and a generated image file. Scan is therefore:
@@ -126,7 +138,7 @@ npx supabase functions deploy scan-recipe
 ## Task: scan a page in the app
 
 1. Local stack running, OpenAI key loaded, Expo running, signed in.
-2. Import tab → **Scan**.
+2. PostHog flag `recipe-scan` on for that user. Import tab → **Scan**.
 3. Camera or photo library. Crop to the recipe if you can.
 4. The client (`src/lib/scan-recipe.ts`) compresses to ~1280px JPEG, then `functions.invoke('scan-recipe')`.
 5. Wait — two OpenAI calls, often 10–30 seconds.

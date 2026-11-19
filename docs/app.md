@@ -21,7 +21,7 @@ See also [overview.md](./overview.md), [import.md](./import.md), [development.md
 | Tab | File | Role |
 | --- | --- | --- |
 | Recipes | `recipes.tsx` | Searchable list, add button, sign out |
-| Import | `import.tsx` | Paste URL, Import, Scan |
+| Import | `import.tsx` | Paste URL, Import, Scan (Scan only if PostHog flag `recipe-scan` is on) |
 | Friends | `friends.tsx` | Requests, gifts, add-by-email |
 
 Recipe routes (pushed on the stack, headers visible):

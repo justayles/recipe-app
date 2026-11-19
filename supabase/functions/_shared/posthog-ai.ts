@@ -16,6 +16,9 @@ if (!posthogHost && !isProduction) {
   );
 }
 
+/** Keep in sync with `RECIPE_SCAN_FLAG` in `src/lib/feature-flags.ts`. */
+export const RECIPE_SCAN_FLAG = 'recipe-scan';
+
 export type AiObservabilityContext = {
   distinctId: string | null;
   traceId: string;
@@ -61,6 +64,32 @@ export function requestDistinctId(authorization: string | null): string | null {
       : null;
   } catch {
     return null;
+  }
+}
+
+export async function isRecipeScanEnabled(distinctId: string | null): Promise<boolean> {
+  if (!posthogApiKey || !posthogHost || !distinctId) return false;
+
+  const posthog = new PostHog(posthogApiKey, {
+    flushAt: 1,
+    flushInterval: 0,
+    host: posthogHost,
+  });
+
+  try {
+    const enabled = await Promise.race([
+      posthog.isFeatureEnabled(RECIPE_SCAN_FLAG, distinctId),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_500)),
+    ]);
+    return enabled === true;
+  } catch (error) {
+    console.warn('PostHog feature flag check failed:', error);
+    return false;
+  } finally {
+    await Promise.race([
+      posthog.shutdown(),
+      new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
+    ]);
   }
 }
 

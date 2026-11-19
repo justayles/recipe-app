@@ -8,6 +8,7 @@ import { AppState, useColorScheme, View } from 'react-native';
 import { RecipeekSplash } from '@/components/recipeek-splash';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { useAppFonts } from '@/lib/fonts';
+import { RecipeekPostHogProvider } from '@/lib/posthog';
 
 SplashScreen.preventAutoHideAsync();
 SplashScreen.setOptions({ duration: 200, fade: true });
@@ -60,7 +61,9 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootNavigator />
+      <RecipeekPostHogProvider>
+        <RootNavigator />
+      </RecipeekPostHogProvider>
     </AuthProvider>
   );
 }

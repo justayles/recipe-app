@@ -7,6 +7,7 @@ import {
 } from '../_shared/parse-recipe.ts';
 import {
   captureAiGeneration,
+  isRecipeScanEnabled,
   requestDistinctId,
   type AiObservabilityContext,
 } from '../_shared/posthog-ai.ts';
@@ -386,6 +387,9 @@ Deno.serve(async (req) => {
 
   const auth = req.headers.get('Authorization');
   if (!auth) return json({ error: 'Unauthorized' }, 401);
+  if (!(await isRecipeScanEnabled(requestDistinctId(auth)))) {
+    return json({ error: 'Recipe scan is not enabled for this account.' }, 403);
+  }
 
   let imageBase64 = '';
   let imageContentType = 'image/jpeg';

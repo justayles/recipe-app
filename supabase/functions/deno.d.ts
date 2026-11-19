@@ -21,6 +21,7 @@ declare module 'npm:posthog-node@5' {
       event: string;
       properties?: Record<string, unknown>;
     }): void;
+    isFeatureEnabled(flag: string, distinctId: string): Promise<boolean | undefined>;
     shutdown(): Promise<void>;
   }
 }

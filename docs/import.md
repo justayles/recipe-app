@@ -172,5 +172,6 @@ Then invoke the local function with a user JWT, or temporarily call `parseRecipe
 | Photo | Site’s hero image | Site’s hero image | Crop of page dish, else generated (`gpt-image-2.5-sunburst`) |
 | `sourceName` | Hostname | Hostname | `Scanned page` |
 | Needs `OPENAI_API_KEY` | No | Yes | Yes |
+| PostHog flag `recipe-scan` | No | No | Yes (button hidden and function returns 403 if off) |
 
-Both import modes and scan end at `/recipe/new` through `importedToDraft`.
+Both import modes and scan end at `/recipe/new` through `importedToDraft`. Scan is also documented in [openai.md](./openai.md).

@@ -59,6 +59,8 @@ That is destructive. It replays every file in `supabase/migrations/` then `supab
 | `EXPO_PUBLIC_SUPABASE_URL` | `.env` → `http://127.0.0.1:54331` | `.env` or EAS secret → `https://<ref>.supabase.co` | Yes (public) |
 | `EXPO_PUBLIC_SUPABASE_KEY` | Publishable / anon key from `npx supabase status` | Project Settings → API | Yes (public; RLS protects data) |
 | `OPENAI_API_KEY` | `supabase/functions/.env` | `npx supabase secrets set` (no `--local` flag) | **No** |
+| `EXPO_PUBLIC_POSTHOG_KEY` / `EXPO_PUBLIC_POSTHOG_HOST` | `.env` project `phc_…` key | EAS env or `.env` | Yes (public; feature flags) |
+| `POSTHOG_API_KEY` / `POSTHOG_HOST` | `supabase/functions/.env` | `npx supabase secrets set` | **No** (same project as the app key; used for AI events and the scan flag check) |
 | Service role key | Printed by `supabase status` — do not put in the app | Dashboard — do not put in the app | **No** |
 
 `EXPO_PUBLIC_*` is inlined into the JS bundle. Anything that can spend money or bypass RLS stays in Edge Function secrets.

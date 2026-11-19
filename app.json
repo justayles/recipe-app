@@ -68,7 +68,8 @@
           "photosPermission": "Recipeek uses your photo gallery so you can add pictures to recipes and scan saved magazine pages.",
           "cameraPermission": "Recipeek uses the camera to photograph dishes and to scan magazine and cookbook pages."
         }
-      ]
+      ],
+      "expo-localization"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -62,6 +62,10 @@ Client fallback `importDirectly` cannot fetch many sites from a device. Fix the 
 
 ## Scan / OpenAI
 
+### Scan button is missing
+
+Scan is gated by PostHog flag `recipe-scan`. Hidden while flags load, if the flag is off, or if `EXPO_PUBLIC_POSTHOG_KEY` is unset. Create the boolean flag in PostHog, enable it for your user, and restart Metro. The `scan-recipe` function also returns 403 when the flag is off.
+
 ### `OPENAI_API_KEY is not set`
 
 Local: key belongs in `supabase/functions/.env`, then `npm run db:stop && npm run db:start`. Not Expo `.env`, not `npx supabase secrets set` (that is hosted).
