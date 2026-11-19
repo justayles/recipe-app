@@ -94,7 +94,7 @@ npx tsc --noEmit
 npx expo lint
 ```
 
-`supabase/functions` is excluded from `tsc` (`tsconfig.json`) because it is Deno. Treat function TypeScript as a separate check: read the file, or invoke the function once locally.
+`supabase/functions` is excluded from the app `tsc` (`tsconfig.json`) because it is Deno. The editor uses `supabase/functions/tsconfig.json` instead (`npx tsc --noEmit -p supabase/functions`).
 
 ## Task: switch the app from local Docker to hosted (or back)
 

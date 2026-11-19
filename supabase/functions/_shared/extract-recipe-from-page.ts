@@ -5,6 +5,7 @@ import {
   type ImportedRecipe,
   type RecipeLine,
 } from './parse-recipe.ts';
+import { captureAiGeneration, type AiObservabilityContext } from './posthog-ai.ts';
 
 const EXTRACT_MODEL = Deno.env.get('OPENAI_SCAN_MODEL') || 'gpt-6-luna';
 const MAX_PAGE_CHARS = 24_000;
@@ -81,6 +82,7 @@ type ResponsesPayload = {
   error?: { message?: string };
   status?: string;
   incomplete_details?: { reason?: string } | null;
+  usage?: { input_tokens?: number; output_tokens?: number };
 };
 
 export function openaiKey(): string {
@@ -234,7 +236,33 @@ export function importedRecipeFromExtracted(
   };
 }
 
-export async function extractRecipeFromPage(pageText: string, apiKey: string): Promise<ExtractedRecipe> {
+export async function extractRecipeFromPage(
+  pageText: string,
+  apiKey: string,
+  observability: AiObservabilityContext,
+): Promise<ExtractedRecipe> {
+  const input = [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: `${[
+            'Read this recipe web page (JSON-LD, recipe card HTML, and page text).',
+            'Extract one recipe into the schema.',
+            'Prefer the recipe card / JSON-LD over blog narrative, comments, and related recipes.',
+            'Ingredients must be full lines such as "225g unsalted butter, softened", not split objects.',
+            'If the ingredient list is punctuated with group headings such as "For the marinade", "Dry Rub", or "Glaze", emit each heading as kind "heading" immediately before the items in that group. Keep the printed heading text. Do not invent headings for a single ungrouped list. Do not emit a heading for the word Ingredients itself.',
+            'Steps must be the method, one instruction per item, without leading numbers.',
+            'Do not paste the ingredient list into a step. If a step blob concatenates instruction then ingredients, keep only the instruction.',
+            'If the method is punctuated with group headings, emit each heading as kind "heading" immediately before the steps in that group. Do not emit a heading for Method or Instructions.',
+            'If a field is not on the page, use null or an empty array.',
+          ].join(' ')}\n\n${pageText}`,
+        },
+      ],
+    },
+  ];
+  const startedAt = performance.now();
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -252,31 +280,26 @@ export async function extractRecipeFromPage(pageText: string, apiKey: string): P
           schema: RECIPE_SCHEMA,
         },
       },
-      input: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'input_text',
-              text: `${[
-                'Read this recipe web page (JSON-LD, recipe card HTML, and page text).',
-                'Extract one recipe into the schema.',
-                'Prefer the recipe card / JSON-LD over blog narrative, comments, and related recipes.',
-                'Ingredients must be full lines such as "225g unsalted butter, softened", not split objects.',
-                'If the ingredient list is punctuated with group headings such as "For the marinade", "Dry Rub", or "Glaze", emit each heading as kind "heading" immediately before the items in that group. Keep the printed heading text. Do not invent headings for a single ungrouped list. Do not emit a heading for the word Ingredients itself.',
-                'Steps must be the method, one instruction per item, without leading numbers.',
-                'Do not paste the ingredient list into a step. If a step blob concatenates instruction then ingredients, keep only the instruction.',
-                'If the method is punctuated with group headings, emit each heading as kind "heading" immediately before the steps in that group. Do not emit a heading for Method or Instructions.',
-                'If a field is not on the page, use null or an empty array.',
-              ].join(' ')}\n\n${pageText}`,
-            },
-          ],
-        },
-      ],
+      input,
     }),
   });
 
   const payload = (await response.json()) as ResponsesPayload;
+  await captureAiGeneration({
+    ...observability,
+    error: payload.error?.message ?? payload.incomplete_details?.reason,
+    httpStatus: response.status,
+    input,
+    inputTokens: payload.usage?.input_tokens,
+    isError: !response.ok || (payload.status != null && payload.status !== 'completed'),
+    latency: (performance.now() - startedAt) / 1_000,
+    model: EXTRACT_MODEL,
+    outputChoices: payload.output_text
+      ? [{ role: 'assistant', content: payload.output_text }]
+      : undefined,
+    outputTokens: payload.usage?.output_tokens,
+    provider: 'openai',
+  });
   if (!response.ok) {
     throw new Error(payload.error?.message || `OpenAI extract failed (${response.status})`);
   }

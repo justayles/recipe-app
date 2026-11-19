@@ -5,6 +5,11 @@ import {
   type ImportedRecipe,
   type RecipeLine,
 } from '../_shared/parse-recipe.ts';
+import {
+  captureAiGeneration,
+  requestDistinctId,
+  type AiObservabilityContext,
+} from '../_shared/posthog-ai.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -162,6 +167,7 @@ type ResponsesPayload = {
   error?: { message?: string };
   status?: string;
   incomplete_details?: { reason?: string } | null;
+  usage?: { input_tokens?: number; output_tokens?: number };
 };
 
 function textFromResponsesPayload(payload: ResponsesPayload): string {
@@ -184,8 +190,36 @@ function parseRecipeJson(raw: string): ExtractedRecipe {
   return JSON.parse(stripped) as ExtractedRecipe;
 }
 
-async function extractRecipe(imageBase64: string, contentType: string, apiKey: string): Promise<ExtractedRecipe> {
-  const dataUrl = `data:${contentType};base64,${imageBase64}`;
+async function extractRecipe(
+  imageBase64: string,
+  contentType: string,
+  apiKey: string,
+  observability: AiObservabilityContext,
+): Promise<ExtractedRecipe> {
+  const input = [
+    {
+      role: 'user',
+      content: [
+        {
+          type: 'input_text',
+          text: [
+            'Read this cookbook or magazine recipe page.',
+            'Extract the recipe into the schema.',
+            'Ingredients must be full lines such as "225g unsalted butter, softened", not split objects.',
+            'If the ingredient list is punctuated with group headings such as "For the marinade", "For the stew", "For the dressing", emit each heading as kind "heading" immediately before the items in that group. Keep the printed heading text. Do not invent headings for a single ungrouped list. Do not emit a heading for the word Ingredients itself. Do not merge a heading onto the same line as an ingredient.',
+            'Steps must be the method, one instruction per item, without leading numbers.',
+            'If the method is punctuated with group headings such as "For the marinade" or "For the stew", emit each heading as kind "heading" immediately before the steps in that group. Keep the printed heading text. Do not invent headings for a single ungrouped method. Do not emit a heading for the word Method or Instructions itself. Do not merge a heading onto the same line as a step.',
+            'If a field is not on the page, use null or an empty array.',
+            'If the page includes a photograph of the finished dish, set hasDishPhoto true and give a tight crop box as fractions of the image (0 to 1) for left, top, width, and height. Crop the food photo only, not the whole page or the text.',
+            'If there is no usable dish photograph, set hasDishPhoto false and set the crop numbers to 0.',
+            'visualPrompt should describe the finished dish for a photorealistic food photo, used only when there is no dish photograph on the page.',
+          ].join(' '),
+        },
+        { type: 'input_image', image_url: `data:${contentType};base64,${imageBase64}`, detail: 'high' },
+      ],
+    },
+  ];
+  const startedAt = performance.now();
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -203,33 +237,26 @@ async function extractRecipe(imageBase64: string, contentType: string, apiKey: s
           schema: RECIPE_SCHEMA,
         },
       },
-      input: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'input_text',
-              text: [
-                'Read this cookbook or magazine recipe page.',
-                'Extract the recipe into the schema.',
-                'Ingredients must be full lines such as "225g unsalted butter, softened", not split objects.',
-                'If the ingredient list is punctuated with group headings such as "For the marinade", "For the stew", "For the dressing", emit each heading as kind "heading" immediately before the items in that group. Keep the printed heading text. Do not invent headings for a single ungrouped list. Do not emit a heading for the word Ingredients itself. Do not merge a heading onto the same line as an ingredient.',
-                'Steps must be the method, one instruction per item, without leading numbers.',
-                'If the method is punctuated with group headings such as "For the marinade" or "For the stew", emit each heading as kind "heading" immediately before the steps in that group. Keep the printed heading text. Do not invent headings for a single ungrouped method. Do not emit a heading for the word Method or Instructions itself. Do not merge a heading onto the same line as a step.',
-                'If a field is not on the page, use null or an empty array.',
-                'If the page includes a photograph of the finished dish, set hasDishPhoto true and give a tight crop box as fractions of the image (0 to 1) for left, top, width, and height. Crop the food photo only, not the whole page or the text.',
-                'If there is no usable dish photograph, set hasDishPhoto false and set the crop numbers to 0.',
-                'visualPrompt should describe the finished dish for a photorealistic food photo, used only when there is no dish photograph on the page.',
-              ].join(' '),
-            },
-            { type: 'input_image', image_url: dataUrl, detail: 'high' },
-          ],
-        },
-      ],
+      input,
     }),
   });
 
   const payload = (await response.json()) as ResponsesPayload;
+  await captureAiGeneration({
+    ...observability,
+    error: payload.error?.message ?? payload.incomplete_details?.reason,
+    httpStatus: response.status,
+    input,
+    inputTokens: payload.usage?.input_tokens,
+    isError: !response.ok || (payload.status != null && payload.status !== 'completed'),
+    latency: (performance.now() - startedAt) / 1_000,
+    model: EXTRACT_MODEL,
+    outputChoices: payload.output_text
+      ? [{ role: 'assistant', content: payload.output_text }]
+      : undefined,
+    outputTokens: payload.usage?.output_tokens,
+    provider: 'openai',
+  });
   if (!response.ok) {
     throw new Error(payload.error?.message || `OpenAI extract failed (${response.status})`);
   }
@@ -266,10 +293,15 @@ async function extractRecipe(imageBase64: string, contentType: string, apiKey: s
   return parsed;
 }
 
-async function generateDishImage(visualPrompt: string, apiKey: string): Promise<string | null> {
+async function generateDishImage(
+  visualPrompt: string,
+  apiKey: string,
+  observability: AiObservabilityContext,
+): Promise<string | null> {
   const prompt =
     visualPrompt.trim() ||
     'Photorealistic overhead photo of a homemade plated dish, natural kitchen light, no text.';
+  const startedAt = performance.now();
   const response = await fetch('https://api.openai.com/v1/images/generations', {
     method: 'POST',
     headers: {
@@ -289,6 +321,16 @@ async function generateDishImage(visualPrompt: string, apiKey: string): Promise<
     data?: { b64_json?: string }[];
     error?: { message?: string };
   };
+  await captureAiGeneration({
+    ...observability,
+    error: payload.error?.message,
+    httpStatus: response.status,
+    input: [{ role: 'user', content: prompt }],
+    isError: !response.ok,
+    latency: (performance.now() - startedAt) / 1_000,
+    model: IMAGE_MODEL,
+    provider: 'openai',
+  });
   if (!response.ok) {
     console.error('image generation failed:', payload.error?.message || response.status);
     return null;
@@ -358,7 +400,11 @@ Deno.serve(async (req) => {
 
   try {
     const apiKey = openaiKey();
-    const extracted = await extractRecipe(imageBase64, imageContentType, apiKey);
+    const observability = {
+      distinctId: requestDistinctId(auth),
+      traceId: crypto.randomUUID(),
+    };
+    const extracted = await extractRecipe(imageBase64, imageContentType, apiKey, observability);
     const recipe = toImportedRecipe(extracted);
     const dishPhotoCrop = usableDishCrop(extracted);
     if (dishPhotoCrop) {
@@ -372,7 +418,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const generated = await generateDishImage(extracted.visualPrompt, apiKey);
+    const generated = await generateDishImage(extracted.visualPrompt, apiKey, observability);
     return json({
       recipe,
       imageBase64: generated,

@@ -6,6 +6,7 @@ import {
   openaiKey,
 } from '../_shared/extract-recipe-from-page.ts';
 import { parseRecipeHtml, type ImportedRecipe } from '../_shared/parse-recipe.ts';
+import { requestDistinctId } from '../_shared/posthog-ai.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -115,7 +116,10 @@ Deno.serve(async (req) => {
     let recipe: ImportedRecipe;
     if (useAi) {
       const scraped = await scrapeRecipe(html, parsedUrl.toString());
-      const extracted = await extractRecipeFromPage(compactRecipePage(html), openaiKey());
+      const extracted = await extractRecipeFromPage(compactRecipePage(html), openaiKey(), {
+        distinctId: requestDistinctId(auth),
+        traceId: crypto.randomUUID(),
+      });
       recipe = importedRecipeFromExtracted(
         extracted,
         parsedUrl.toString(),
