@@ -17,8 +17,8 @@ const empty: RecipeFormValue = {
   notes: null,
   category: 'main',
   cuisine: null,
-  ingredients: [''],
-  steps: [''],
+  ingredients: [{ text: '', isHeading: false }],
+  steps: [{ text: '', isHeading: false }],
   labelIds: [],
 };
 

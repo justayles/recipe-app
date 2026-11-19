@@ -33,7 +33,6 @@ Sign in as Alice and Bob on two devices to try gifting.
 | `npm run db:types` | Regenerate `src/lib/database.types.ts` from the local schema |
 | `npm run typecheck` | TypeScript check |
 | `npx eslint src` | Lint |
-| `npm run scan:recipe -- <file>` | OCR an image (or parse a `.txt` dump) into a recipe JSON |
 
 Local Supabase Studio: http://127.0.0.1:54333
 
@@ -41,11 +40,10 @@ Local Supabase Studio: http://127.0.0.1:54333
 
 - `src/app/` — Expo Router screens: `(auth)` sign in/up, `(app)/(tabs)` recipes / import / friends, recipe detail/edit
 - `src/hooks/` — TanStack Query hooks (recipes, labels, friends, gifts, realtime)
-- `src/lib/` — Supabase client, auth context, theme, recipe HTML parser, magazine OCR parser
-- `scripts/parse-scan.ts` — CLI to OCR a page photo (tesseract.js) or parse a saved OCR dump
+- `src/lib/` — Supabase client, auth context, theme, recipe HTML parser
 - `supabase/migrations/` — schema and RLS; `supabase/seed.sql` — local test data
-- `supabase/functions/import-recipe` — fetches a recipe page, reads schema.org JSON-LD, returns title / ingredients / steps / image
-- `supabase/functions/scan-recipe` — OCR.space + `parseScanText`, returns a recipe plus the page photo
+- `supabase/functions/import-recipe` — fetches a recipe page, reads schema.org JSON-LD (or `gpt-6-luna` if the user taps Try with AI), returns title / ingredients / steps / image
+- `supabase/functions/scan-recipe` — reads a cookbook photo with `gpt-6-luna`, crops a dish photo from the page when there is one, otherwise generates one with `gpt-image-2.5-sunburst`
 
 ## Importing a recipe
 
@@ -57,32 +55,35 @@ Deep link for later (development builds): `recipeek://import?url=<encoded-page-u
 
 ## Scanning a magazine page
 
+Scan needs an OpenAI API key (vision + image generation). Create one at https://platform.openai.com/api-keys and put a little credit on the account.
+
+```bash
+cp supabase/.env.example supabase/functions/.env
+# paste your real key: OPENAI_API_KEY=sk-proj-...
+npm run db:stop && npm run db:start
+```
+
+Local functions read `supabase/functions/.env`. Do not run `npx supabase secrets set` for local Docker — that command has no `--local` flag and would upload the key to a linked hosted project.
+
 1. On the Import tab, tap **Scan** and photograph the page (or pick a photo). Crop to the recipe if you can.
-2. The phone sends the photo to an OCR helper on your PC (`npm start` launches it). That helper calls OCR.space using Google DNS (the router DNS here cannot resolve `api.ocr.space`), then fills the form. The photo is kept as the recipe image.
-3. Review title, ingredients, method and notes, then save.
+2. `gpt-6-luna` extracts title, ingredients, steps and times into the same recipe shape as URL import.
+3. If the page has a usable dish photo, that crop is used. Otherwise `gpt-image-2.5-sunburst` generates a low-quality 1024×1024 photo (about half a cent).
+4. Review the form and save.
 
-Get a free key at https://ocr.space/ocrapi and set `EXPO_PUBLIC_OCR_SPACE_API_KEY` in `.env`. Restart Expo after changing `.env`. If OCR.space is unreachable, the helper falls back to Tesseract.
-
-```bash
-npx supabase secrets set OCR_SPACE_API_KEY=<your-key>
-npx supabase functions deploy scan-recipe
-```
-
-To process a scan on your machine — a photo, or a `.txt` file of OCR output:
-
-```bash
-npm run scan:recipe -- scripts/fixtures/magazine-ocr.txt
-npm run scan:recipe -- path/to/page.jpg
-npm run scan:recipe -- --ocr-only path/to/page.jpg   # print raw OCR only
-```
+If image generation fails, the recipe still opens with a placeholder photo and a note on the edit screen. Tap the placeholder to upload your own picture, or save without one.
 
 ## Moving to hosted Supabase
 
 1. Create a project at supabase.com and run `npx supabase link --project-ref <ref>`.
 2. `npx supabase db push` to apply the migrations.
 3. `npx supabase functions deploy import-recipe scan-recipe`
-4. Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to the hosted values.
-5. Hosted projects require email confirmation by default; the sign-up screen tells users to confirm, or disable it under Auth settings while testing.
-6. Optional: build an APK with `npx eas-cli build --platform android --profile preview`.
+4. `npx supabase secrets set OPENAI_API_KEY=sk-proj-...` (real key; this is for hosted only)
+5. Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to the hosted values.
+6. Hosted projects require email confirmation by default; the sign-up screen tells users to confirm, or disable it under Auth settings while testing.
+7. Optional: build an APK with `npx eas-cli build --platform android --profile preview`.
 
 After changing the schema, regenerate types with `npm run db:types`.
+
+## Docs
+
+Longer how-it-works notes live in [`docs/`](./docs/README.md): local vs production, Docker/Supabase, the database, URL import, OpenAI scan, the Expo app, and troubleshooting.

@@ -4,10 +4,20 @@ import { messageFromFunctionError } from './function-error';
 import { extractUrlFromShareText, parseRecipeHtml, type ImportedRecipe } from './parse-recipe';
 import { supabase } from './supabase';
 
+export type DishPhotoCrop = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export type ImportResult = {
   recipe: ImportedRecipe;
   imageBase64: string | null;
   imageContentType: string | null;
+  imageGenerationFailed?: boolean;
+  useScannedDishPhoto?: boolean;
+  dishPhotoCrop?: DishPhotoCrop | null;
 };
 
 type FunctionPayload = {
@@ -17,9 +27,13 @@ type FunctionPayload = {
   error?: string;
 };
 
-async function importViaFunction(url: string): Promise<ImportResult> {
+export function canRetryUrlImport(url: string): boolean {
+  return /^https?:\/\//i.test(url.trim());
+}
+
+async function importViaFunction(url: string, useAi: boolean): Promise<ImportResult> {
   const { data, error } = await supabase.functions.invoke<FunctionPayload>('import-recipe', {
-    body: { url },
+    body: { url, useAi },
   });
   if (error) throw new Error(await messageFromFunctionError(error, 'Could not read that recipe page'));
   if (data?.error) throw new Error(data.error);
@@ -49,7 +63,10 @@ async function importDirectly(url: string): Promise<ImportResult> {
   };
 }
 
-export async function importRecipeFromUrl(raw: string): Promise<ImportResult> {
+export async function importRecipeFromUrl(
+  raw: string,
+  options?: { useAi?: boolean },
+): Promise<ImportResult> {
   const trimmed = raw.trim();
   const url = extractUrlFromShareText(trimmed) ?? trimmed;
   try {
@@ -58,9 +75,15 @@ export async function importRecipeFromUrl(raw: string): Promise<ImportResult> {
     throw new Error('Paste a full recipe URL, starting with https://');
   }
 
+  const useAi = options?.useAi === true;
   try {
-    return await importViaFunction(url);
+    return await importViaFunction(url, useAi);
   } catch (functionError) {
+    if (useAi) {
+      throw functionError instanceof Error
+        ? functionError
+        : new Error('Could not read that recipe page');
+    }
     try {
       return await importDirectly(url);
     } catch {
@@ -80,15 +103,20 @@ export function importedToDraft(result: ImportResult): RecipeFormValue {
     servings: result.recipe.servings,
     prep_minutes: result.recipe.prepMinutes,
     cook_minutes: result.recipe.cookMinutes,
-    notes: result.recipe.notes ?? null,
+    notes: null,
     category: result.recipe.category,
     cuisine: result.recipe.cuisine,
-    ingredients: result.recipe.ingredients.length ? result.recipe.ingredients : [''],
-    steps: result.recipe.steps.length ? result.recipe.steps : [''],
+    ingredients: result.recipe.ingredients.length
+      ? result.recipe.ingredients
+      : [{ text: '', isHeading: false }],
+    steps: result.recipe.steps.length ? result.recipe.steps : [{ text: '', isHeading: false }],
     labelIds: [],
     imageUri: result.imageBase64 ? null : result.recipe.imageUrl,
     imageBase64: result.imageBase64,
     imageContentType: result.imageContentType,
+    imageNotice: result.imageGenerationFailed
+      ? 'We could not generate a photo of this dish, so a placeholder is shown. Tap it to upload your own if you want.'
+      : undefined,
   };
 }
 

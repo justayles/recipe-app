@@ -1,4 +1,11 @@
-import { parseRecipeHtml } from '../_shared/parse-recipe.ts';
+import {
+  compactRecipePage,
+  extractRecipeFromPage,
+  importedRecipeFromExtracted,
+  ogImageFromHtml,
+  openaiKey,
+} from '../_shared/extract-recipe-from-page.ts';
+import { parseRecipeHtml, type ImportedRecipe } from '../_shared/parse-recipe.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +28,60 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+function hostName(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return null;
+  }
+}
+
+async function fetchPage(url: string): Promise<string> {
+  const page = await fetch(url, {
+    headers: {
+      'User-Agent': UA,
+      Accept: 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-GB,en;q=0.9',
+    },
+    redirect: 'follow',
+  });
+  if (!page.ok) {
+    throw new Error(`The site returned ${page.status}. Try copying the recipe in by hand.`);
+  }
+  return page.text();
+}
+
+async function downloadHeroImage(
+  imageUrl: string | null,
+  referer: string,
+): Promise<{ imageBase64: string | null; imageContentType: string | null }> {
+  if (!imageUrl) return { imageBase64: null, imageContentType: null };
+  try {
+    const image = await fetch(imageUrl, {
+      headers: { 'User-Agent': UA, Accept: 'image/*', Referer: referer },
+    });
+    if (!image.ok) return { imageBase64: null, imageContentType: null };
+    const buffer = new Uint8Array(await image.arrayBuffer());
+    if (buffer.byteLength === 0 || buffer.byteLength > 4_000_000) {
+      return { imageBase64: null, imageContentType: null };
+    }
+    return {
+      imageBase64: bytesToBase64(buffer),
+      imageContentType: image.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg',
+    };
+  } catch {
+    return { imageBase64: null, imageContentType: null };
+  }
+}
+
+async function scrapeRecipe(html: string, sourceUrl: string): Promise<ImportedRecipe | null> {
+  try {
+    return parseRecipeHtml(html, sourceUrl);
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -29,9 +90,11 @@ Deno.serve(async (req) => {
   if (!auth) return json({ error: 'Unauthorized' }, 401);
 
   let url: string;
+  let useAi = false;
   try {
-    const body = (await req.json()) as { url?: string };
+    const body = (await req.json()) as { url?: string; useAi?: boolean };
     url = typeof body.url === 'string' ? body.url.trim() : '';
+    useAi = body.useAi === true;
   } catch {
     return json({ error: 'Expected JSON body with a url' }, 400);
   }
@@ -47,40 +110,27 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const page = await fetch(parsedUrl.toString(), {
-      headers: {
-        'User-Agent': UA,
-        Accept: 'text/html,application/xhtml+xml',
-        'Accept-Language': 'en-GB,en;q=0.9',
-      },
-      redirect: 'follow',
-    });
-    if (!page.ok) {
-      return json({ error: `The site returned ${page.status}. Try copying the recipe in by hand.` }, 422);
-    }
-    const html = await page.text();
-    const recipe = parseRecipeHtml(html, parsedUrl.toString());
+    const html = await fetchPage(parsedUrl.toString());
 
-    let imageBase64: string | null = null;
-    let imageContentType: string | null = null;
-    if (recipe.imageUrl) {
-      try {
-        const image = await fetch(recipe.imageUrl, {
-          headers: { 'User-Agent': UA, Accept: 'image/*', Referer: parsedUrl.toString() },
-        });
-        if (image.ok) {
-          const buffer = new Uint8Array(await image.arrayBuffer());
-          if (buffer.byteLength > 0 && buffer.byteLength <= 4_000_000) {
-            imageBase64 = bytesToBase64(buffer);
-            imageContentType = image.headers.get('content-type')?.split(';')[0] ?? 'image/jpeg';
-          }
-        }
-      } catch {
-        // Image is optional — keep the recipe even if the photo cannot be fetched.
-      }
+    let recipe: ImportedRecipe;
+    if (useAi) {
+      const scraped = await scrapeRecipe(html, parsedUrl.toString());
+      const extracted = await extractRecipeFromPage(compactRecipePage(html), openaiKey());
+      recipe = importedRecipeFromExtracted(
+        extracted,
+        parsedUrl.toString(),
+        hostName(parsedUrl.toString()),
+        scraped?.imageUrl ?? ogImageFromHtml(html),
+      );
+    } else {
+      recipe = parseRecipeHtml(html, parsedUrl.toString());
     }
 
-    return json({ recipe, imageBase64, imageContentType });
+    const { imageBase64, imageContentType } = await downloadHeroImage(
+      recipe.imageUrl,
+      parsedUrl.toString(),
+    );
+    return json({ recipe, imageBase64, imageContentType, usedAi: useAi });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not read that recipe page';
     return json({ error: message }, 422);

@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import {
   KeyboardAvoidingView,
@@ -32,8 +32,15 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
     setBusy(true);
     setError(null);
     try {
-      if (isSignUp) await signUp(email, password, displayName);
-      else await signIn(email, password);
+      if (isSignUp) {
+        const needsConfirm = await signUp(email, password, displayName);
+        if (needsConfirm) {
+          router.push({ pathname: '/confirm', params: { email: email.trim(), type: 'signup' } });
+          return;
+        }
+      } else {
+        await signIn(email, password);
+      }
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -109,6 +116,9 @@ export function AuthForm({ mode }: { mode: 'sign-in' | 'sign-up' }) {
           style={{ marginTop: 16 }}
         />
 
+        <Link href="/confirm" style={[styles.link, { color: theme.primary }]}>
+          I already have an email code
+        </Link>
         <Link
           href={isSignUp ? '/sign-in' : '/sign-up'}
           replace

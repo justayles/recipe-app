@@ -1,13 +1,18 @@
-import type { Session } from '@supabase/supabase-js';
+import type { EmailOtpType, Session } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+import { createSessionFromUrl, getAuthRedirectUrl, urlLooksLikeAuthCallback } from './auth-redirect';
 import { supabase } from './supabase';
 
 type AuthContextValue = {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, displayName?: string) => Promise<void>;
+  /** Returns true when the user must confirm their email. */
+  signUp: (email: string, password: string, displayName?: string) => Promise<boolean>;
+  verifyEmailOtp: (email: string, token: string, type: EmailOtpType) => Promise<void>;
+  resendEmailOtp: (email: string, type: 'signup' | 'recovery') => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -29,6 +34,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    function handleUrl(url: string | null) {
+      if (!urlLooksLikeAuthCallback(url)) return;
+      createSessionFromUrl(url).catch((e) => {
+        console.warn('Could not complete sign-in from email link', e);
+      });
+    }
+
+    Linking.getInitialURL().then(handleUrl);
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    return () => sub.remove();
+  }, []);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       session,
@@ -41,12 +59,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: displayName ? { display_name: displayName.trim() } : undefined },
+          options: {
+            emailRedirectTo: getAuthRedirectUrl(),
+            data: displayName ? { display_name: displayName.trim() } : undefined,
+          },
         });
         if (error) throw error;
-        if (!data.session) {
-          throw new Error('Check your email to confirm your account, then sign in.');
+        if (data.user && (data.user.identities?.length ?? 0) === 0) {
+          throw new Error('An account with this email already exists. Sign in, or reset your password.');
         }
+        return !data.session;
+      },
+      verifyEmailOtp: async (email, token, type) => {
+        const trimmed = { email: email.trim(), token: token.trim() };
+        let { error } = await supabase.auth.verifyOtp({ ...trimmed, type });
+        if (error && type === 'signup') {
+          ({ error } = await supabase.auth.verifyOtp({ ...trimmed, type: 'email' }));
+        }
+        if (error) throw error;
+      },
+      resendEmailOtp: async (email, type) => {
+        const trimmed = email.trim();
+        if (type === 'recovery') {
+          const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+            redirectTo: getAuthRedirectUrl(),
+          });
+          if (error) throw error;
+          return;
+        }
+        const { error } = await supabase.auth.resend({
+          type: 'signup',
+          email: trimmed,
+          options: { emailRedirectTo: getAuthRedirectUrl() },
+        });
+        if (error) throw error;
       },
       signOut: async () => {
         const { error } = await supabase.auth.signOut();

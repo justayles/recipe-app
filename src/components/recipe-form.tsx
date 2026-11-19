@@ -1,4 +1,4 @@
-import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useState } from 'react';
 import {
@@ -21,10 +21,14 @@ import type { RecipeInput } from '@/hooks/use-recipes';
 import { LABEL_COLORS, RECIPE_CATEGORIES } from '@/lib/categories';
 import { displayFont, uiFont } from '@/lib/fonts';
 import { recipeImageUrl } from '@/lib/images';
+import { canRetryUrlImport, importedToDraft, importRecipeFromUrl } from '@/lib/import-recipe';
+import type { IngredientLine, StepLine } from '@/lib/parse-recipe';
+import { choosePhotoSource, launchPhotoPicker } from '@/lib/pick-photo';
 import { useTheme } from '@/lib/theme';
 
 export type RecipeFormValue = RecipeInput & {
   existingImagePath?: string | null;
+  imageNotice?: string | null;
 };
 
 export function RecipeForm({
@@ -53,13 +57,19 @@ export function RecipeForm({
   const [notes, setNotes] = useState(initial.notes ?? '');
   const [category, setCategory] = useState(initial.category);
   const [cuisine, setCuisine] = useState(initial.cuisine ?? '');
-  const [ingredients, setIngredients] = useState(initial.ingredients.length ? initial.ingredients : ['']);
-  const [steps, setSteps] = useState(initial.steps.length ? initial.steps : ['']);
+  const [ingredients, setIngredients] = useState<IngredientLine[]>(
+    initial.ingredients.length ? initial.ingredients : [{ text: '', isHeading: false }],
+  );
+  const [steps, setSteps] = useState<StepLine[]>(
+    initial.steps.length ? initial.steps : [{ text: '', isHeading: false }],
+  );
   const [labelIds, setLabelIds] = useState(initial.labelIds);
   const [imageUri, setImageUri] = useState(initial.imageUri ?? null);
-  const [imageBase64] = useState(initial.imageBase64 ?? null);
-  const [imageContentType] = useState(initial.imageContentType ?? null);
+  const [imageBase64, setImageBase64] = useState(initial.imageBase64 ?? null);
+  const [imageContentType, setImageContentType] = useState(initial.imageContentType ?? null);
+  const [imageNotice, setImageNotice] = useState(initial.imageNotice ?? null);
   const [creatingLabel, setCreatingLabel] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const preview =
@@ -68,21 +78,57 @@ export function RecipeForm({
     recipeImageUrl(initial.existingImagePath);
 
   async function pickImage() {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [16, 9],
+    const source = await choosePhotoSource({
+      title: 'Recipe photo',
+      message: 'Take a new photo or choose one from your gallery.',
     });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    if (!source) return;
+    try {
+      const result = await launchPhotoPicker(source, { aspect: [16, 9] });
+      if (!result.canceled && result.assets[0]) {
+        setImageUri(result.assets[0].uri);
+        setImageBase64(null);
+        setImageContentType(null);
+        setImageNotice(null);
+      }
+    } catch (e) {
+      setError(errorMessage(e));
     }
   }
 
-  function updateList(list: string[], index: number, value: string, setter: (next: string[]) => void) {
-    const next = [...list];
-    next[index] = value;
-    setter(next);
+  async function retryWithAi() {
+    if (!canRetryUrlImport(sourceUrl) || retrying || busy) return;
+    setRetrying(true);
+    setError(null);
+    try {
+      const draft = importedToDraft(await importRecipeFromUrl(sourceUrl, { useAi: true }));
+      setTitle(draft.title);
+      setDescription(draft.description ?? '');
+      setSourceUrl(draft.source_url ?? sourceUrl);
+      setSourceName(draft.source_name ?? '');
+      setServings(draft.servings ? String(draft.servings) : '');
+      setPrep(draft.prep_minutes ? String(draft.prep_minutes) : '');
+      setCook(draft.cook_minutes ? String(draft.cook_minutes) : '');
+      setCategory(draft.category);
+      setCuisine(draft.cuisine ?? '');
+      setIngredients(draft.ingredients.length ? draft.ingredients : [{ text: '', isHeading: false }]);
+      setSteps(draft.steps.length ? draft.steps : [{ text: '', isHeading: false }]);
+      if (draft.imageBase64) {
+        setImageUri(null);
+        setImageBase64(draft.imageBase64);
+        setImageContentType(draft.imageContentType ?? 'image/jpeg');
+        setImageNotice(null);
+      } else if (draft.imageUri) {
+        setImageUri(draft.imageUri);
+        setImageBase64(null);
+        setImageContentType(null);
+        setImageNotice(null);
+      }
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setRetrying(false);
+    }
   }
 
   async function submit() {
@@ -128,9 +174,19 @@ export function RecipeForm({
           {preview ? (
             <Image source={{ uri: preview }} style={styles.image} contentFit="cover" />
           ) : (
-            <Text style={[styles.imageHint, { color: theme.badgeText }]}>Tap to add a photo</Text>
+            <View style={styles.placeholder}>
+              <Ionicons name="restaurant" size={40} color={theme.badgeText} />
+              <Text style={[styles.imageHint, { color: theme.badgeText }]}>
+                {imageNotice ? 'Placeholder — tap to add your own photo' : 'Tap to add a photo'}
+              </Text>
+            </View>
           )}
         </Pressable>
+        {imageNotice ? (
+          <View style={[styles.notice, { backgroundColor: theme.badge, borderColor: theme.border }]}>
+            <Text style={[styles.noticeText, { color: theme.badgeText }]}>{imageNotice}</Text>
+          </View>
+        ) : null}
 
         <TextInput style={inputStyle} placeholder="Title" placeholderTextColor={theme.textMuted} value={title} onChangeText={setTitle} />
         <TextInput
@@ -210,39 +266,77 @@ export function RecipeForm({
         </View>
 
         <Text style={[styles.section, { color: theme.text }]}>Ingredients</Text>
-        {ingredients.map((item, index) => (
+        {ingredients.map((line, index) => (
           <View key={`ing-${index}`} style={styles.listRow}>
             <TextInput
-              style={[inputStyle, styles.flex]}
-              placeholder={`Ingredient ${index + 1}`}
+              style={[inputStyle, styles.flex, line.isHeading && { fontFamily: displayFont.semibold }]}
+              placeholder={line.isHeading ? 'e.g. For the marinade' : `Ingredient ${index + 1}`}
               placeholderTextColor={theme.textMuted}
-              value={item}
-              onChangeText={(value) => updateList(ingredients, index, value, setIngredients)}
+              value={line.text}
+              onChangeText={(value) => {
+                const next = [...ingredients];
+                next[index] = { ...line, text: value };
+                setIngredients(next);
+              }}
             />
             <Pressable onPress={() => setIngredients(ingredients.filter((_, i) => i !== index))} hitSlop={8}>
               <Text style={{ color: theme.danger, fontFamily: uiFont.semibold }}>Remove</Text>
             </Pressable>
           </View>
         ))}
-        <Button title="Add ingredient" variant="secondary" onPress={() => setIngredients([...ingredients, ''])} />
+        <View style={styles.row}>
+          <Button
+            title="Add ingredient"
+            variant="secondary"
+            onPress={() => setIngredients([...ingredients, { text: '', isHeading: false }])}
+            style={styles.flex}
+          />
+          <Button
+            title="Add heading"
+            variant="secondary"
+            onPress={() => setIngredients([...ingredients, { text: '', isHeading: true }])}
+            style={styles.flex}
+          />
+        </View>
 
         <Text style={[styles.section, { color: theme.text }]}>Steps</Text>
-        {steps.map((item, index) => (
+        {steps.map((line, index) => (
           <View key={`step-${index}`} style={styles.listRow}>
             <TextInput
-              style={[inputStyle, styles.flex, styles.multiline]}
-              placeholder={`Step ${index + 1}`}
+              style={[
+                inputStyle,
+                styles.flex,
+                line.isHeading ? { fontFamily: displayFont.semibold } : styles.multiline,
+              ]}
+              placeholder={line.isHeading ? 'e.g. For the stew' : 'Write the next step'}
               placeholderTextColor={theme.textMuted}
-              value={item}
-              onChangeText={(value) => updateList(steps, index, value, setSteps)}
-              multiline
+              value={line.text}
+              onChangeText={(value) => {
+                const next = [...steps];
+                next[index] = { ...line, text: value };
+                setSteps(next);
+              }}
+              multiline={!line.isHeading}
             />
             <Pressable onPress={() => setSteps(steps.filter((_, i) => i !== index))} hitSlop={8}>
               <Text style={{ color: theme.danger, fontFamily: uiFont.semibold }}>Remove</Text>
             </Pressable>
           </View>
         ))}
-        <Button title="Add step" variant="secondary" onPress={() => setSteps([...steps, ''])} />
+        <View style={styles.row}>
+          <Button
+            title="Add step"
+            variant="secondary"
+            onPress={() => setSteps([...steps, { text: '', isHeading: false }])}
+            style={styles.flex}
+          />
+          <Button
+            title="Add heading"
+            variant="secondary"
+            onPress={() => setSteps([...steps, { text: '', isHeading: true }])}
+            style={styles.flex}
+          />
+        </View>
 
         <TextInput
           style={inputStyle}
@@ -269,7 +363,18 @@ export function RecipeForm({
         />
 
         <ErrorText message={error} />
-        <Button title={submitLabel} onPress={submit} loading={busy} disabled={!title.trim()} />
+        {canRetryUrlImport(sourceUrl) ? (
+          <>
+            <Button
+              title="Not right? Try again"
+              variant="secondary"
+              onPress={retryWithAi}
+              loading={retrying}
+              disabled={busy || retrying}
+            />
+          </>
+        ) : null}
+        <Button title={submitLabel} onPress={submit} loading={busy} disabled={!title.trim() || retrying} />
       </ScrollView>
 
       <PromptModal
@@ -294,7 +399,10 @@ export function RecipeForm({
 const styles = StyleSheet.create({
   imageWrap: { height: 180, borderRadius: 16, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
   image: { width: '100%', height: '100%' },
-  imageHint: { fontFamily: uiFont.semibold, fontSize: 15 },
+  placeholder: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 24 },
+  imageHint: { fontFamily: uiFont.semibold, fontSize: 15, textAlign: 'center' },
+  notice: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  noticeText: { fontSize: 14, lineHeight: 20, fontFamily: uiFont.regular },
   input: {
     borderWidth: 1,
     borderRadius: 12,

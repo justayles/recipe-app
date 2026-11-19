@@ -35,6 +35,7 @@ function RootNavigator() {
           <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
             <StatusBar style={splashVisible ? 'light' : 'auto'} />
             <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="auth/callback" />
               <Stack.Protected guard={!!session}>
                 <Stack.Screen name="(app)" />
               </Stack.Protected>

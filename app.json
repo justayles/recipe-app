@@ -2,12 +2,17 @@
   "expo": {
     "name": "Recipeek",
     "slug": "recipeek",
+    "owner": "justay123",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "recipeek",
     "userInterfaceStyle": "automatic",
-    "platforms": ["android", "ios", "web"],
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
     "android": {
       "package": "com.justa.recipeek",
       "adaptiveIcon": {
@@ -22,9 +27,19 @@
         {
           "action": "VIEW",
           "autoVerify": false,
-          "data": [{ "scheme": "recipeek" }],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "data": [
+            {
+              "scheme": "recipeek"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
+      ],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "ios": {
@@ -50,14 +65,24 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Recipeek uses your photos so you can add pictures to recipes and scan saved magazine pages.",
-          "cameraPermission": "Recipeek uses the camera to scan magazine and cookbook pages."
+          "photosPermission": "Recipeek uses your photo gallery so you can add pictures to recipes and scan saved magazine pages.",
+          "cameraPermission": "Recipeek uses the camera to photograph dishes and to scan magazine and cookbook pages."
         }
       ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      },
+      "eas": {
+        "projectId": "31355b57-be55-4c17-837f-a4f1525563f4"
+      }
     }
   }
 }

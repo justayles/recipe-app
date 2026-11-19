@@ -2,21 +2,13 @@ import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import {
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, ErrorText, errorMessage } from '@/components/ui';
-import { importedToDraft, importRecipeFromUrl, type ImportResult } from '@/lib/import-recipe';
+import { canRetryUrlImport, importedToDraft, importRecipeFromUrl } from '@/lib/import-recipe';
 import { displayFont, uiFont } from '@/lib/fonts';
+import { choosePhotoSource } from '@/lib/pick-photo';
 import { setRecipeDraft } from '@/lib/recipe-draft';
 import { scanRecipeFromImage } from '@/lib/scan-recipe';
 import { useTheme } from '@/lib/theme';
@@ -26,7 +18,7 @@ export default function ImportScreen() {
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ url?: string }>();
   const [url, setUrl] = useState(typeof params.url === 'string' ? params.url : '');
-  const [busy, setBusy] = useState<'import' | 'scan' | null>(null);
+  const [busy, setBusy] = useState<'import' | 'scan' | 'ai' | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -49,16 +41,12 @@ export default function ImportScreen() {
     if (text) setUrl(text.trim());
   }
 
-  function openDraft(result: ImportResult) {
-    setRecipeDraft(importedToDraft(result));
-    router.push('/recipe/new');
-  }
-
   async function importNow() {
     setBusy('import');
     setError(null);
     try {
-      openDraft(await importRecipeFromUrl(url));
+      setRecipeDraft(importedToDraft(await importRecipeFromUrl(url)));
+      router.push('/recipe/new');
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -66,30 +54,33 @@ export default function ImportScreen() {
     }
   }
 
-  function chooseScanSource(): Promise<'camera' | 'library' | null> {
-    if (Platform.OS === 'web') return Promise.resolve('library');
-    return new Promise((resolve) => {
-      Alert.alert(
-        'Scan a recipe',
-        'Photograph a magazine or cookbook page. The photo is kept as the recipe image.',
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve(null) },
-          { text: 'Photo library', onPress: () => resolve('library') },
-          { text: 'Camera', onPress: () => resolve('camera') },
-        ],
-      );
-    });
+  async function importWithAi() {
+    setBusy('ai');
+    setError(null);
+    try {
+      setRecipeDraft(importedToDraft(await importRecipeFromUrl(url, { useAi: true })));
+      router.push('/recipe/new');
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function scanNow() {
-    const source = await chooseScanSource();
+    const source = await choosePhotoSource({
+      title: 'Scan a recipe',
+      message:
+        'Photograph a magazine or cookbook page, or pick an existing photo from your gallery.',
+    });
     if (!source) return;
     setBusy('scan');
     setError(null);
     try {
       const result = await scanRecipeFromImage(source);
       if (!result) return;
-      openDraft(result);
+      setRecipeDraft(importedToDraft(result));
+      router.push('/recipe/new');
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -142,10 +133,24 @@ export default function ImportScreen() {
           />
         </View>
         <Text style={[styles.copy, { color: theme.textMuted }]}>
-          Scan photographs a magazine or cookbook page, reads the ingredients and method, and keeps
-          the photo as the recipe image.
+          Scan photographs a magazine or cookbook page and reads the ingredients and method. If the
+          page has a photo of the dish, that is used; otherwise Recipeek generates one.
         </Text>
         <ErrorText message={error} />
+        {error && canRetryUrlImport(url) ? (
+          <>
+            <Button
+              title="Try with AI"
+              variant="secondary"
+              onPress={importWithAi}
+              loading={busy === 'ai'}
+              disabled={busy != null}
+            />
+            <Text style={[styles.copy, { color: theme.textMuted }]}>
+              The scraper could not read that page. AI rereads the HTML and uses your OpenAI quota.
+            </Text>
+          </>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );

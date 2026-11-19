@@ -42,8 +42,14 @@ export default function EditRecipe() {
         notes: data.notes,
         category: data.category,
         cuisine: data.cuisine,
-        ingredients: data.ingredients.map((item) => item.item),
-        steps: data.steps.map((step) => step.body),
+        ingredients: data.ingredients.map((item) => ({
+          text: item.item,
+          isHeading: item.is_heading,
+        })),
+        steps: data.steps.map((step) => ({
+          text: step.body,
+          isHeading: step.is_heading,
+        })),
         labelIds: data.labels.map((label) => label.id),
         existingImagePath: data.image_path,
       }}

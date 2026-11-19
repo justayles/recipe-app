@@ -16,6 +16,7 @@
     "expo-image": "~58.0.18",
     "expo-image-manipulator": "~58.0.16",
     "expo-image-picker": "~58.0.10",
+    "expo-intent-launcher": "~58.0.3",
     "expo-linking": "~58.0.15",
     "expo-router": "~58.0.28",
     "expo-splash-screen": "~58.0.12",
@@ -34,12 +35,10 @@
     "eslint": "^9.0.0",
     "eslint-config-expo": "~58.0.4",
     "supabase": "^2.122.0",
-    "tesseract.js": "^7.0.0",
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "node scripts/dev-with-ocr.mjs",
-    "ocr:server": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/ocr-proxy.mjs",
+    "start": "expo start",
     "android": "expo start --android",
     "web": "expo start --web",
     "lint": "expo lint",
@@ -47,8 +46,7 @@
     "db:start": "supabase start",
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
-    "db:types": "supabase gen types typescript --local > src/lib/database.types.ts",
-    "scan:recipe": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/parse-scan.ts"
+    "db:types": "supabase gen types typescript --local > src/lib/database.types.ts"
   },
   "private": true
 }

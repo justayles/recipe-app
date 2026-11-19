@@ -118,18 +118,37 @@ export default function RecipeDetail() {
             {data.description ? <Text style={[styles.copy, { color: theme.text }]}>{data.description}</Text> : null}
 
             <Text style={[styles.section, { color: theme.text }]}>Ingredients</Text>
-            {data.ingredients.map((item) => (
-              <Text key={item.id} style={[styles.item, { color: theme.text }]}>
-                • {item.item}
-              </Text>
-            ))}
+            {data.ingredients.map((item) =>
+              item.is_heading ? (
+                <Text key={item.id} style={[styles.ingredientHeading, { color: theme.text }]}>
+                  {item.item}
+                </Text>
+              ) : (
+                <Text key={item.id} style={[styles.item, { color: theme.text }]}>
+                  • {item.item}
+                </Text>
+              ),
+            )}
 
             <Text style={[styles.section, { color: theme.text }]}>Method</Text>
-            {data.steps.map((step, index) => (
-              <Text key={step.id} style={[styles.item, { color: theme.text }]}>
-                {index + 1}. {step.body}
-              </Text>
-            ))}
+            {(() => {
+              let n = 0;
+              return data.steps.map((step) => {
+                if (step.is_heading) {
+                  return (
+                    <Text key={step.id} style={[styles.ingredientHeading, { color: theme.text }]}>
+                      {step.body}
+                    </Text>
+                  );
+                }
+                n += 1;
+                return (
+                  <Text key={step.id} style={[styles.item, { color: theme.text }]}>
+                    {n}. {step.body}
+                  </Text>
+                );
+              });
+            })()}
 
             {data.notes ? (
               <>
@@ -172,6 +191,7 @@ const styles = StyleSheet.create({
   gifted: { fontSize: 14, fontFamily: uiFont.semibold, marginTop: 4 },
   copy: { fontSize: 16, lineHeight: 24, fontFamily: uiFont.regular, marginTop: 8 },
   section: { fontSize: 20, fontFamily: displayFont.semibold, marginTop: 18, marginBottom: 4 },
+  ingredientHeading: { fontSize: 16, lineHeight: 24, fontFamily: displayFont.semibold, marginTop: 10 },
   item: { fontSize: 16, lineHeight: 24, fontFamily: uiFont.regular },
   link: { marginTop: 16, fontSize: 15, fontFamily: uiFont.semibold },
 });

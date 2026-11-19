@@ -123,14 +123,14 @@ isOneToOne: false
                   ]
                 },"recipe_ingredients": {
                   Row: {
-                    "id": string,"item": string,"position": number,"recipe_id": string
+                    "id": string,"is_heading": boolean,"item": string,"position": number,"recipe_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "id"?: string,"item": string,"position"?: number,"recipe_id": string
+                    "id"?: string,"is_heading"?: boolean,"item": string,"position"?: number,"recipe_id": string
                   }
                   Update: {
-                    "id"?: string,"item"?: string,"position"?: number,"recipe_id"?: string
+                    "id"?: string,"is_heading"?: boolean,"item"?: string,"position"?: number,"recipe_id"?: string
                   }
                   Relationships: [
                     {
@@ -169,14 +169,14 @@ isOneToOne: false
                   ]
                 },"recipe_steps": {
                   Row: {
-                    "body": string,"id": string,"position": number,"recipe_id": string
+                    "body": string,"id": string,"is_heading": boolean,"position": number,"recipe_id": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "body": string,"id"?: string,"position"?: number,"recipe_id": string
+                    "body": string,"id"?: string,"is_heading"?: boolean,"position"?: number,"recipe_id": string
                   }
                   Update: {
-                    "body"?: string,"id"?: string,"position"?: number,"recipe_id"?: string
+                    "body"?: string,"id"?: string,"is_heading"?: boolean,"position"?: number,"recipe_id"?: string
                   }
                   Relationships: [
                     {

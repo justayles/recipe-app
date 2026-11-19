@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import type { Tables } from '@/lib/database.types';
 import { uploadRecipeImage } from '@/lib/images';
+import type { IngredientLine, StepLine } from '@/lib/parse-recipe';
 import { supabase } from '@/lib/supabase';
 
 export type RecipeLabel = { id: string; name: string; color: string };
@@ -29,8 +30,8 @@ export type RecipeInput = {
   notes: string | null;
   category: string | null;
   cuisine: string | null;
-  ingredients: string[];
-  steps: string[];
+  ingredients: IngredientLine[];
+  steps: StepLine[];
   labelIds: string[];
   imageUri?: string | null;
   imageBase64?: string | null;
@@ -107,18 +108,28 @@ async function replaceChildren(recipeId: string, input: RecipeInput) {
   if (delLabels) throw delLabels;
 
   const ingredients = input.ingredients
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .map((item, position) => ({ recipe_id: recipeId, position, item }));
+    .map((line) => ({ text: line.text.trim(), isHeading: line.isHeading }))
+    .filter((line) => line.text)
+    .map((line, position) => ({
+      recipe_id: recipeId,
+      position,
+      item: line.text,
+      is_heading: line.isHeading,
+    }));
   if (ingredients.length) {
     const { error } = await supabase.from('recipe_ingredients').insert(ingredients);
     if (error) throw error;
   }
 
   const steps = input.steps
-    .map((body) => body.trim())
-    .filter(Boolean)
-    .map((body, position) => ({ recipe_id: recipeId, position, body }));
+    .map((line) => ({ text: line.text.trim(), isHeading: line.isHeading }))
+    .filter((line) => line.text)
+    .map((line, position) => ({
+      recipe_id: recipeId,
+      position,
+      body: line.text,
+      is_heading: line.isHeading,
+    }));
   if (steps.length) {
     const { error } = await supabase.from('recipe_steps').insert(steps);
     if (error) throw error;
