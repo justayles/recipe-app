@@ -66,6 +66,10 @@ Client fallback `importDirectly` cannot fetch many sites from a device. Fix the 
 
 Scan is gated by PostHog flag `recipe-scan`. Hidden while flags load, if the flag is off, or if `EXPO_PUBLIC_POSTHOG_KEY` is unset. Create the boolean flag in PostHog, enable it for your user, and restart Metro. The `scan-recipe` function also returns 403 when the flag is off.
 
+Instagram import is the same pattern with flag `instagram-import`. If paste-an-Instagram-link does nothing useful, the flag is off or PostHog is unset. If the function says Instagram would not share that post, the page is private or the server IP was blocked — try local Docker first.
+
+Recipeek does not appear in Instagram’s share sheet in Expo Go. Build a development client (`npx expo run:android`). Paste still works.
+
 ### `OPENAI_API_KEY is not set`
 
 Local: key belongs in `supabase/functions/.env`, then `npm run db:stop && npm run db:start`. Not Expo `.env`, not `npx supabase secrets set` (that is hosted).

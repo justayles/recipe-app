@@ -1,12 +1,14 @@
 import {
   compactRecipePage,
+  extractRecipeFromCaption,
   extractRecipeFromPage,
   importedRecipeFromExtracted,
   ogImageFromHtml,
   openaiKey,
 } from '../_shared/extract-recipe-from-page.ts';
+import { fetchInstagramPreview, isInstagramPostUrl } from '../_shared/instagram.ts';
 import { parseRecipeHtml, type ImportedRecipe } from '../_shared/parse-recipe.ts';
-import { requestDistinctId } from '../_shared/posthog-ai.ts';
+import { isInstagramImportEnabled, requestDistinctId } from '../_shared/posthog-ai.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -108,6 +110,38 @@ Deno.serve(async (req) => {
   }
   if (!/^https?:$/.test(parsedUrl.protocol)) {
     return json({ error: 'Only http(s) recipe URLs are supported' }, 400);
+  }
+
+  if (isInstagramPostUrl(parsedUrl.toString())) {
+    if (!(await isInstagramImportEnabled(requestDistinctId(auth)))) {
+      return json({ error: 'Instagram import is not enabled for this account.' }, 403);
+    }
+    try {
+      const preview = await fetchInstagramPreview(parsedUrl.toString());
+      const extracted = await extractRecipeFromCaption(
+        preview.caption,
+        preview.author,
+        openaiKey(),
+        {
+          distinctId: requestDistinctId(auth),
+          traceId: crypto.randomUUID(),
+        },
+      );
+      const recipe = importedRecipeFromExtracted(
+        extracted,
+        preview.canonicalUrl,
+        preview.author ? `@${preview.author} on Instagram` : 'Instagram',
+        preview.imageUrl,
+      );
+      const { imageBase64, imageContentType } = await downloadHeroImage(
+        recipe.imageUrl,
+        'https://www.instagram.com/',
+      );
+      return json({ recipe, imageBase64, imageContentType, usedAi: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not read that Instagram post';
+      return json({ error: message }, 422);
+    }
   }
 
   try {

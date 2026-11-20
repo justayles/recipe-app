@@ -4,7 +4,7 @@ import { useEffect, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
 import { useAuth } from '@/lib/auth';
-import { RECIPE_SCAN_FLAG } from '@/lib/feature-flags';
+import { INSTAGRAM_IMPORT_FLAG, RECIPE_SCAN_FLAG } from '@/lib/feature-flags';
 
 const apiKey = process.env.EXPO_PUBLIC_POSTHOG_KEY ?? '';
 const host = process.env.EXPO_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com';
@@ -49,4 +49,9 @@ export function RecipeekPostHogProvider({ children }: { children: ReactNode }) {
 /** True only after flags have loaded and `recipe-scan` is on. Hidden while loading. */
 export function useRecipeScanEnabled(): boolean {
   return useFeatureFlag(RECIPE_SCAN_FLAG) === true;
+}
+
+/** True only after flags have loaded and `instagram-import` is on. Hidden while loading. */
+export function useInstagramImportEnabled(): boolean {
+  return useFeatureFlag(INSTAGRAM_IMPORT_FLAG) === true;
 }

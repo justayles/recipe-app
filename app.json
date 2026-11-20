@@ -53,6 +53,17 @@
     "plugins": [
       "expo-router",
       [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": ["text/*"],
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#C45C26",

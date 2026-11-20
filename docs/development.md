@@ -32,19 +32,19 @@ This repo uses **npm** (`package-lock.json`), not bun. Use `npx`, not `bunx`.
 
 ## Expo Go vs a development build
 
-Expo Go includes only the native modules it ships. Recipeek currently stays inside that set (Router, Image, ImagePicker, ImageManipulator, IntentLauncher, Clipboard, Font, Linking, Localization). **Scan and camera work in Expo Go.** `posthog-react-native` uses those Expo packages; it does not need a development build.
+Expo Go includes only the native modules it ships. **Scan, camera, and paste-a-URL import work in Expo Go.** `posthog-react-native` uses those Expo packages; it does not need a development build.
 
-Add a library with extra native code and Expo Go will not load it. Then you need:
+**Share to Recipeek** (`expo-share-intent`) is native code. Expo Go will not appear in Instagram’s share sheet. Paste an Instagram link on the Import tab still works in Expo Go when flag `instagram-import` is on. To receive shares:
 
 ```bash
 npx expo run:android
 # or
-npx eas-cli build --profile development --platform android
+npx eas-cli@latest build --profile development --platform android
 ```
 
 There is no `ios/` or `android/` folder on purpose (Continuous Native Generation). Do not create them by hand. Configure permissions and plugins in `app.json`.
 
-Share-from-browser (`recipeek://import?url=`) is the feature most likely to need a dev build first.
+`expo-dev-client` is installed so `npx expo start` can open that development build. Use `npx expo start --go` when you still want Expo Go.
 
 ## Environment files (do not mix them up)
 

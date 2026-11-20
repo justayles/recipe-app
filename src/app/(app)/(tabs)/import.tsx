@@ -1,15 +1,16 @@
 import * as Clipboard from 'expo-clipboard';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, ErrorText, errorMessage } from '@/components/ui';
 import { canRetryUrlImport, importedToDraft, importRecipeFromUrl } from '@/lib/import-recipe';
 import { displayFont, uiFont } from '@/lib/fonts';
+import { isInstagramUrl } from '@/lib/instagram';
 import { choosePhotoSource } from '@/lib/pick-photo';
-import { useRecipeScanEnabled } from '@/lib/posthog';
+import { useInstagramImportEnabled, useRecipeScanEnabled } from '@/lib/posthog';
 import { setRecipeDraft } from '@/lib/recipe-draft';
 import { scanRecipeFromImage } from '@/lib/scan-recipe';
 import { useTheme } from '@/lib/theme';
@@ -18,10 +19,19 @@ export default function ImportScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const scanEnabled = useRecipeScanEnabled();
-  const params = useLocalSearchParams<{ url?: string }>();
-  const [url, setUrl] = useState(typeof params.url === 'string' ? params.url : '');
+  const instagramEnabled = useInstagramImportEnabled();
+  const params = useLocalSearchParams<{ url?: string; auto?: string }>();
+  const paramUrl = typeof params.url === 'string' ? params.url : '';
+  const [url, setUrl] = useState(paramUrl);
+  const [seenParamUrl, setSeenParamUrl] = useState(paramUrl);
   const [busy, setBusy] = useState<'import' | 'scan' | 'ai' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const autoStartedFor = useRef<string | null>(null);
+
+  if (paramUrl && paramUrl !== seenParamUrl) {
+    setSeenParamUrl(paramUrl);
+    setUrl(paramUrl);
+  }
 
   useEffect(() => {
     const sub = Linking.addEventListener('url', ({ url: incoming }) => {
@@ -43,11 +53,14 @@ export default function ImportScreen() {
     if (text) setUrl(text.trim());
   }
 
-  async function importNow() {
+  async function importFrom(raw: string) {
     setBusy('import');
     setError(null);
     try {
-      setRecipeDraft(importedToDraft(await importRecipeFromUrl(url)));
+      if (isInstagramUrl(raw) && !instagramEnabled) {
+        throw new Error('Instagram import is not enabled for this account.');
+      }
+      setRecipeDraft(importedToDraft(await importRecipeFromUrl(raw)));
       router.push('/recipe/new');
     } catch (e) {
       setError(errorMessage(e));
@@ -55,6 +68,21 @@ export default function ImportScreen() {
       setBusy(null);
     }
   }
+
+  async function importNow() {
+    await importFrom(url);
+  }
+
+  useEffect(() => {
+    if (params.auto !== '1' || !instagramEnabled) return;
+    const target = (typeof params.url === 'string' ? params.url : url).trim();
+    if (!isInstagramUrl(target)) return;
+    if (autoStartedFor.current === target) return;
+    autoStartedFor.current = target;
+    void importFrom(target);
+    // importFrom reads the latest flag/url; run once per shared Instagram link.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.auto, params.url, url, instagramEnabled]);
 
   async function importWithAi() {
     setBusy('ai');
@@ -91,6 +119,8 @@ export default function ImportScreen() {
     }
   }
 
+  const instagramLink = isInstagramUrl(url);
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: theme.background }}
@@ -103,6 +133,12 @@ export default function ImportScreen() {
           Paste a recipe page URL from BBC Food, BBC Good Food, or most sites that publish a Recipe
           schema. On a phone you can also copy the link from the browser and paste it here.
         </Text>
+        {instagramEnabled ? (
+          <Text style={[styles.copy, { color: theme.textMuted }]}>
+            Instagram reels and posts work too: share the link to Recipeek, or paste it here. The
+            recipe is read from the caption, and the cover photo is used if Instagram shares one.
+          </Text>
+        ) : null}
         <Text style={[styles.copy, { color: theme.textMuted }]}>
           Bookmarklet for later: recipeek://import?url= then the page address.
         </Text>
@@ -137,6 +173,9 @@ export default function ImportScreen() {
             />
           ) : null}
         </View>
+        {busy === 'import' && instagramLink ? (
+          <Text style={[styles.copy, { color: theme.textMuted }]}>Reading the post...</Text>
+        ) : null}
         {scanEnabled ? (
           <Text style={[styles.copy, { color: theme.textMuted }]}>
             Scan photographs a magazine or cookbook page and reads the ingredients and method. If the

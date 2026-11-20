@@ -1,6 +1,7 @@
 import type { RecipeFormValue } from '@/components/recipe-form';
 
 import { messageFromFunctionError } from './function-error';
+import { isInstagramUrl } from './instagram';
 import { extractUrlFromShareText, parseRecipeHtml, type ImportedRecipe } from './parse-recipe';
 import { supabase } from './supabase';
 
@@ -28,7 +29,8 @@ type FunctionPayload = {
 };
 
 export function canRetryUrlImport(url: string): boolean {
-  return /^https?:\/\//i.test(url.trim());
+  const trimmed = url.trim();
+  return /^https?:\/\//i.test(trimmed) && !isInstagramUrl(trimmed);
 }
 
 async function importViaFunction(url: string, useAi: boolean): Promise<ImportResult> {
@@ -79,7 +81,7 @@ export async function importRecipeFromUrl(
   try {
     return await importViaFunction(url, useAi);
   } catch (functionError) {
-    if (useAi) {
+    if (useAi || isInstagramUrl(url)) {
       throw functionError instanceof Error
         ? functionError
         : new Error('Could not read that recipe page');

@@ -88,7 +88,7 @@ Realtime is enabled on `recipes`, `friendships`, and `gifts` so a second signed-
 
 Import tab → paste a BBC Food (or similar) URL → `import-recipe` Edge Function fetches the HTML, reads schema.org Recipe JSON-LD, downloads the hero image as base64, returns an `ImportedRecipe`. The app maps that onto the recipe form (`importedToDraft`) and you review before save.
 
-If the function fails, the client falls back to fetching the page directly from the device (`importDirectly`). That fallback cannot run on a phone for many sites (CORS / TLS), which is why the function is the primary path. If scrape still fails, or the form looks wrong, **Try with AI** re-invokes `import-recipe` with `useAi: true` (compacted HTML → `gpt-6-luna`). Details in [import.md](./import.md).
+If the function fails, the client falls back to fetching the page directly from the device (`importDirectly`). That fallback cannot run on a phone for many sites (CORS / TLS), which is why the function is the primary path. Instagram URLs skip the device fallback and skip JSON-LD: the function reads the caption from Open Graph tags and always calls `gpt-6-luna` (PostHog flag `instagram-import`). If scrape still fails, or the form looks wrong, **Try with AI** re-invokes `import-recipe` with `useAi: true` (compacted HTML → `gpt-6-luna`). Details in [import.md](./import.md).
 
 ### Scan (photo)
 

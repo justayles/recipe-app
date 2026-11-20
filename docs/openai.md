@@ -1,12 +1,12 @@
 # OpenAI: scanning a cookbook page
 
-OpenAI is used by `scan-recipe` (always) and by `import-recipe` only when the client sends `{ url, useAi: true }` after a scrape the user rejected or that failed. The Expo app never holds an OpenAI key. The default URL import does not call OpenAI. On the recipe form that retry is labelled **Not right? Try again** (not “AI”) so it is not treated as a feature to tap on every import. Details in [import.md](./import.md).
+OpenAI is used by `scan-recipe` (always), by Instagram imports (always, caption → `gpt-6-luna`), and by `import-recipe` when the client sends `{ url, useAi: true }` after a scrape the user rejected or that failed. The Expo app never holds an OpenAI key. The default URL import for recipe websites does not call OpenAI. On the recipe form that website retry is labelled **Not right? Try again** (not “AI”) so it is not treated as a feature to tap on every import. Details in [import.md](./import.md).
 
 See also [overview.md](./overview.md) and [supabase.md](./supabase.md) for how secrets are loaded.
 
 ## Feature flag (`recipe-scan`)
 
-The Scan button and the `scan-recipe` function are off unless the PostHog boolean flag **`recipe-scan`** is true for the signed-in user. URL import is not gated.
+The Scan button and the `scan-recipe` function are off unless the PostHog boolean flag **`recipe-scan`** is true for the signed-in user. Website URL import is not gated. Instagram import is a separate flag, **`instagram-import`** (same PostHog project; create it the same way).
 
 While flags are loading, or if PostHog is not configured, Scan stays hidden. The Edge Function also checks the same flag and returns 403 if it is off, so the camera path cannot be invoked around the UI.
 

@@ -21,7 +21,7 @@ See also [overview.md](./overview.md), [import.md](./import.md), [development.md
 | Tab | File | Role |
 | --- | --- | --- |
 | Recipes | `recipes.tsx` | Searchable list, add button, sign out |
-| Import | `import.tsx` | Paste URL, Import, Scan (Scan only if PostHog flag `recipe-scan` is on) |
+| Import | `import.tsx` | Paste URL, Import, Scan (`recipe-scan`), Instagram share/paste (`instagram-import`) |
 | Friends | `friends.tsx` | Requests, gifts, add-by-email |
 
 Recipe routes (pushed on the stack, headers visible):
@@ -32,7 +32,7 @@ Recipe routes (pushed on the stack, headers visible):
 | `/recipe/[id]` | `recipe/[id].tsx` |
 | `/recipe/edit/[id]` | `recipe/edit/[id].tsx` |
 
-Deep link scheme is `recipeek` (`app.json`). Expo Go handles `recipeek://…` only loosely; a development build is the reliable target for share-from-browser later.
+Deep link scheme is `recipeek` (`app.json`). Share-from-Instagram uses `expo-share-intent` and needs a development build. Expo Go handles `recipeek://…` only loosely.
 
 ## Auth on the client
 
@@ -78,7 +78,7 @@ Empty ingredient/step lines are dropped. Labels are ids of rows in `labels` (cre
 
 Import and scan do **not** write the database themselves. They call `setRecipeDraft` then `router.push('/recipe/new')`. `takeRecipeDraft()` runs once when the new-recipe screen mounts.
 
-If the form was filled from a URL (`source_url` starts with `http`), **Not right? Try again** at the bottom re-imports that URL with `useAi: true` and replaces the extracted fields. Notes and labels stay. The label is not “Try with AI” and there is no helper text — it is a fallback, not something to tap on every import. See [import.md](./import.md).
+If the form was filled from a URL (`source_url` starts with `http` and is not Instagram), **Not right? Try again** at the bottom re-imports that URL with `useAi: true` and replaces the extracted fields. Notes and labels stay. The label is not “Try with AI” and there is no helper text — it is a fallback, not something to tap on every import. Instagram imports already used the model, so that button is hidden. See [import.md](./import.md).
 
 ## Images in the UI
 

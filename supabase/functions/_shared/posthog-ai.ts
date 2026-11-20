@@ -16,8 +16,9 @@ if (!posthogHost && !isProduction) {
   );
 }
 
-/** Keep in sync with `RECIPE_SCAN_FLAG` in `src/lib/feature-flags.ts`. */
+/** Keep in sync with `src/lib/feature-flags.ts`. */
 export const RECIPE_SCAN_FLAG = 'recipe-scan';
+export const INSTAGRAM_IMPORT_FLAG = 'instagram-import';
 
 export type AiObservabilityContext = {
   distinctId: string | null;
@@ -67,7 +68,7 @@ export function requestDistinctId(authorization: string | null): string | null {
   }
 }
 
-export async function isRecipeScanEnabled(distinctId: string | null): Promise<boolean> {
+export async function isFlagEnabled(flag: string, distinctId: string | null): Promise<boolean> {
   if (!posthogApiKey || !posthogHost || !distinctId) return false;
 
   const posthog = new PostHog(posthogApiKey, {
@@ -78,7 +79,7 @@ export async function isRecipeScanEnabled(distinctId: string | null): Promise<bo
 
   try {
     const enabled = await Promise.race([
-      posthog.isFeatureEnabled(RECIPE_SCAN_FLAG, distinctId),
+      posthog.isFeatureEnabled(flag, distinctId),
       new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_500)),
     ]);
     return enabled === true;
@@ -91,6 +92,14 @@ export async function isRecipeScanEnabled(distinctId: string | null): Promise<bo
       new Promise<void>((resolve) => setTimeout(resolve, 1_000)),
     ]);
   }
+}
+
+export function isRecipeScanEnabled(distinctId: string | null): Promise<boolean> {
+  return isFlagEnabled(RECIPE_SCAN_FLAG, distinctId);
+}
+
+export function isInstagramImportEnabled(distinctId: string | null): Promise<boolean> {
+  return isFlagEnabled(INSTAGRAM_IMPORT_FLAG, distinctId);
 }
 
 export async function captureAiGeneration(generation: AiGeneration): Promise<void> {

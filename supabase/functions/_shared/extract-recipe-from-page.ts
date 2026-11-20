@@ -95,7 +95,7 @@ export function openaiKey(): string {
   return key;
 }
 
-function decodeEntities(input: string): string {
+export function decodeEntities(input: string): string {
   return input
     .replace(/&nbsp;/gi, ' ')
     .replace(/&amp;/gi, '&')
@@ -167,12 +167,19 @@ export function compactRecipePage(html: string, maxChars = MAX_PAGE_CHARS): stri
   return joined.length > maxChars ? joined.slice(0, maxChars) : joined;
 }
 
-export function ogImageFromHtml(html: string): string | null {
-  const re =
-    /<meta[^>]+(?:property|name)=["']og:image["'][^>]+content=["']([^"']+)["'][^>]*>|<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image["'][^>]*>/i;
+export function ogTagFromHtml(html: string, property: string): string | null {
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(
+    `<meta[^>]+(?:property|name)=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>|<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${escaped}["'][^>]*>`,
+    'i',
+  );
   const match = html.match(re);
   const value = match?.[1] ?? match?.[2];
   return value ? decodeEntities(value) : null;
+}
+
+export function ogImageFromHtml(html: string): string | null {
+  return ogTagFromHtml(html, 'og:image');
 }
 
 function textFromResponsesPayload(payload: ResponsesPayload): string {
@@ -236,10 +243,60 @@ export function importedRecipeFromExtracted(
   };
 }
 
-export async function extractRecipeFromPage(
-  pageText: string,
+const NOT_ENOUGH_CAPTION =
+  'Not enough info in this post to capture a recipe. Try copying it in by hand.';
+
+const MIN_CAPTION_CHARS = 40;
+
+const PAGE_INSTRUCTIONS = [
+  'Read this recipe web page (JSON-LD, recipe card HTML, and page text).',
+  'Extract one recipe into the schema.',
+  'Prefer the recipe card / JSON-LD over blog narrative, comments, and related recipes.',
+  'Ingredients must be full lines such as "225g unsalted butter, softened", not split objects.',
+  'If the ingredient list is punctuated with group headings such as "For the marinade", "Dry Rub", or "Glaze", emit each heading as kind "heading" immediately before the items in that group. Keep the printed heading text. Do not invent headings for a single ungrouped list. Do not emit a heading for the word Ingredients itself.',
+  'Steps must be the method, one instruction per item, without leading numbers.',
+  'Do not paste the ingredient list into a step. If a step blob concatenates instruction then ingredients, keep only the instruction.',
+  'If the method is punctuated with group headings, emit each heading as kind "heading" immediately before the steps in that group. Do not emit a heading for Method or Instructions.',
+  'If a field is not on the page, use null or an empty array.',
+].join(' ');
+
+const CAPTION_INSTRUCTIONS = [
+  'Read this Instagram post caption.',
+  'Extract one recipe into the schema if the caption contains ingredients or a method.',
+  'Ignore hashtags, emojis, "link in bio", shout-outs, and calls to follow or like.',
+  'Ingredients must be full lines such as "225g unsalted butter, softened", not split objects.',
+  'If the ingredient list is punctuated with group headings such as "For the marinade", "Dry Rub", or "Glaze", emit each heading as kind "heading" immediately before the items in that group. Keep the printed heading text. Do not invent headings for a single ungrouped list. Do not emit a heading for the word Ingredients itself.',
+  'Steps must be the method, one instruction per item, without leading numbers.',
+  'Use the ingredients and method as written. Do not invent quantities, times, or steps that are not in the caption.',
+  'If the method is punctuated with group headings, emit each heading as kind "heading" immediately before the steps in that group. Do not emit a heading for Method or Instructions.',
+  'If this caption is not a recipe, return a short title if you can and empty ingredients and steps arrays.',
+  'If a field is not in the caption, use null or an empty array.',
+].join(' ');
+
+type ExtractErrors = {
+  empty: string;
+  noTitle: string;
+  noRecipe: string;
+};
+
+const PAGE_ERRORS: ExtractErrors = {
+  empty: 'The model returned an empty recipe. Try copying it in by hand.',
+  noTitle: 'Could not read a recipe title from that page',
+  noRecipe: 'Could not find ingredients or method on that page.',
+};
+
+const CAPTION_ERRORS: ExtractErrors = {
+  empty: NOT_ENOUGH_CAPTION,
+  noTitle: NOT_ENOUGH_CAPTION,
+  noRecipe: NOT_ENOUGH_CAPTION,
+};
+
+async function extractRecipeFromText(
+  instructions: string,
+  body: string,
   apiKey: string,
   observability: AiObservabilityContext,
+  errors: ExtractErrors,
 ): Promise<ExtractedRecipe> {
   const input = [
     {
@@ -247,17 +304,7 @@ export async function extractRecipeFromPage(
       content: [
         {
           type: 'input_text',
-          text: `${[
-            'Read this recipe web page (JSON-LD, recipe card HTML, and page text).',
-            'Extract one recipe into the schema.',
-            'Prefer the recipe card / JSON-LD over blog narrative, comments, and related recipes.',
-            'Ingredients must be full lines such as "225g unsalted butter, softened", not split objects.',
-            'If the ingredient list is punctuated with group headings such as "For the marinade", "Dry Rub", or "Glaze", emit each heading as kind "heading" immediately before the items in that group. Keep the printed heading text. Do not invent headings for a single ungrouped list. Do not emit a heading for the word Ingredients itself.',
-            'Steps must be the method, one instruction per item, without leading numbers.',
-            'Do not paste the ingredient list into a step. If a step blob concatenates instruction then ingredients, keep only the instruction.',
-            'If the method is punctuated with group headings, emit each heading as kind "heading" immediately before the steps in that group. Do not emit a heading for Method or Instructions.',
-            'If a field is not on the page, use null or an empty array.',
-          ].join(' ')}\n\n${pageText}`,
+          text: `${instructions}\n\n${body}`,
         },
       ],
     },
@@ -313,7 +360,7 @@ export async function extractRecipeFromPage(
   }
 
   const raw = textFromResponsesPayload(payload);
-  if (!raw) throw new Error('The model returned an empty recipe. Try copying it in by hand.');
+  if (!raw) throw new Error(errors.empty);
 
   let parsed: ExtractedRecipe;
   try {
@@ -321,11 +368,39 @@ export async function extractRecipeFromPage(
   } catch {
     throw new Error('The model returned text that was not a recipe.');
   }
-  if (!parsed.title?.trim()) throw new Error('Could not read a recipe title from that page');
+  if (!parsed.title?.trim()) throw new Error(errors.noTitle);
   const ingredientItems = (parsed.ingredients ?? []).filter((line) => line.kind === 'item' && line.text.trim());
   const stepItems = (parsed.steps ?? []).filter((line) => line.kind === 'item' && line.text.trim());
   if (!ingredientItems.length && !stepItems.length) {
-    throw new Error('Could not find ingredients or method on that page.');
+    throw new Error(errors.noRecipe);
   }
   return parsed;
+}
+
+export async function extractRecipeFromPage(
+  pageText: string,
+  apiKey: string,
+  observability: AiObservabilityContext,
+): Promise<ExtractedRecipe> {
+  return extractRecipeFromText(PAGE_INSTRUCTIONS, pageText, apiKey, observability, PAGE_ERRORS);
+}
+
+export async function extractRecipeFromCaption(
+  caption: string,
+  author: string | null,
+  apiKey: string,
+  observability: AiObservabilityContext,
+): Promise<ExtractedRecipe> {
+  const trimmed = caption.trim();
+  if (trimmed.length < MIN_CAPTION_CHARS) {
+    throw new Error(NOT_ENOUGH_CAPTION);
+  }
+  const heading = author ? `Instagram caption from @${author}:` : 'Instagram caption:';
+  return extractRecipeFromText(
+    CAPTION_INSTRUCTIONS,
+    `${heading}\n\n${trimmed}`,
+    apiKey,
+    observability,
+    CAPTION_ERRORS,
+  );
 }

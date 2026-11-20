@@ -1,6 +1,6 @@
 # Recipeek
 
-Android-first cookbook built with Expo (React Native). Save recipes with ingredients, steps, photos, categories and labels. Add friends by email and gift them recipes you have found. Import from BBC Food and similar sites by pasting a page URL, or scan a magazine / cookbook page. Backend is Supabase running locally in Docker (real Postgres, Auth, Row Level Security, Storage, Edge Functions).
+Android-first cookbook built with Expo (React Native). Save recipes with ingredients, steps, photos, categories and labels. Add friends by email and gift them recipes you have found. Import from BBC Food and similar sites by pasting a page URL, from Instagram by sharing or pasting a reel link (caption + cover still), or scan a magazine / cookbook page. Backend is Supabase running locally in Docker (real Postgres, Auth, Row Level Security, Storage, Edge Functions).
 
 ## Setup
 
@@ -42,7 +42,7 @@ Local Supabase Studio: http://127.0.0.1:54333
 - `src/hooks/` — TanStack Query hooks (recipes, labels, friends, gifts, realtime)
 - `src/lib/` — Supabase client, auth context, theme, recipe HTML parser
 - `supabase/migrations/` — schema and RLS; `supabase/seed.sql` — local test data
-- `supabase/functions/import-recipe` — fetches a recipe page, reads schema.org JSON-LD (or `gpt-6-luna` if the user taps Try with AI), returns title / ingredients / steps / image
+- `supabase/functions/import-recipe` — fetches a recipe page, reads schema.org JSON-LD (or `gpt-6-luna` if the user taps Try with AI, or for Instagram captions), returns title / ingredients / steps / image
 - `supabase/functions/scan-recipe` — reads a cookbook photo with `gpt-6-luna`, crops a dish photo from the page when there is one, otherwise generates one with `gpt-image-2.5-sunburst`
 
 ## Importing a recipe
@@ -51,7 +51,7 @@ Local Supabase Studio: http://127.0.0.1:54333
 2. Copy the page URL, open the Import tab, paste, and import.
 3. Review the extracted ingredients, steps and photo, then save.
 
-Deep link for later (development builds): `recipeek://import?url=<encoded-page-url>`.
+Deep link for later (development builds): `recipeek://import?url=<encoded-page-url>`. Instagram: paste a reel/post URL, or **Share → Recipeek** from the Instagram app (needs a development build; Expo Go cannot receive shares). Instagram import is behind PostHog flag `instagram-import` and always uses OpenAI on the caption.
 
 ## Scanning a magazine page
 
@@ -82,7 +82,7 @@ If image generation fails, the recipe still opens with a placeholder photo and a
 4. `npx supabase secrets set OPENAI_API_KEY=sk-proj-...` (real key; this is for hosted only)
 5. Set `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_KEY` to the hosted values.
 6. Hosted projects require email confirmation by default; the sign-up screen tells users to confirm, or disable it under Auth settings while testing.
-7. Optional: build an APK with `npx eas-cli build --platform android --profile preview`.
+7. Optional: build an APK with `npx eas-cli@latest build --platform android --profile preview`. Share-to-Recipeek needs `npx eas-cli@latest build --profile development --platform android` (or `npx expo run:android`).
 
 After changing the schema, regenerate types with `npm run db:types`.
 

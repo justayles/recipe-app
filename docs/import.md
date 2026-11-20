@@ -2,7 +2,7 @@
 
 Paste a recipe page URL on the Import tab. The app tries to turn schema.org Recipe JSON-LD into the same form as a hand-entered recipe. Scanning a photo is a different pipeline ([openai.md](./openai.md)).
 
-The first import is always a scrape (no OpenAI). If that fails, or the form looks wrong, **Try with AI** / **Not right? Try again** sends a compacted copy of the page HTML to `gpt-6-luna`. OpenAI does not fetch the URL itself. The form label is deliberately not “AI” — it is a fallback, not something to tap on every import.
+The first import is always a scrape (no OpenAI), except Instagram links, which always go through `gpt-6-luna` because those pages have no Recipe JSON-LD. If a normal scrape fails, or the form looks wrong, **Try with AI** / **Not right? Try again** sends a compacted copy of the page HTML to `gpt-6-luna`. OpenAI does not fetch the URL itself. The form label is deliberately not “AI” — it is a fallback, not something to tap on every import. Instagram does not get that button: there is no cheaper scrape to retry.
 
 ## What “a recipe URL” means
 
@@ -21,7 +21,7 @@ Fallback if JSON-LD is missing a field: `og:title`, `og:description`, `og:image`
 1. Paste (clipboard) or type a URL. Share text is OK — `extractUrlFromShareText` pulls the first `http(s)://…`.
 2. **Import** calls `importRecipeFromUrl` (`src/lib/import-recipe.ts`).
 3. That invokes the `import-recipe` Edge Function with `{ url }` (scrape only).
-4. If the function throws, the client fetches the HTML **from the device** and runs the same parser (`importDirectly`). That fallback is useful on web; phones often cannot fetch third-party recipe sites (CORS / TLS). Prefer a working function. Device fallback is scrape-only — it cannot call OpenAI.
+4. If the function throws, the client fetches the HTML **from the device** and runs the same parser (`importDirectly`). That fallback is useful on web; phones often cannot fetch third-party recipe sites (CORS / TLS). Prefer a working function. Device fallback is scrape-only — it cannot call OpenAI. Instagram URLs skip this fallback (the phone would hit the same login wall).
 5. `importedToDraft` maps `ImportedRecipe` onto `RecipeFormValue` and `setRecipeDraft`.
 6. Navigate to `/recipe/new`. You still have to tap Save.
 
@@ -66,7 +66,7 @@ Do not send every URL through OpenAI. Scrape first; spend tokens only when the u
 
 The form label is **Not right? Try again**, not “Try with AI”. There is no helper copy under it. It is a quiet fallback for a bad scrape (missing headings, ingredients glued onto steps, empty method), not a second import mode to try first.
 
-The Import tab may say **Try with AI** because that control only appears after scrape has already failed — there is no cheaper retry left.
+The Import tab may say **Try with AI** because that control only appears after scrape has already failed — there is no cheaper retry left. Instagram links never show it.
 
 Scanned pages have an empty `source_url`, so they do not get the form button. Notes and labels on the form are kept; title, ingredients, steps, times, and the site photo are replaced.
 
@@ -127,9 +127,36 @@ Scheme: `recipeek`.
 recipeek://import?url=https%3A%2F%2Fwww.bbc.co.uk%2Ffood%2Frecipes%2F...
 ```
 
-`import.tsx` listens to `Linking` and fills the text field. It does not auto-import.
+`import.tsx` listens to `Linking` and fills the text field. A shared Instagram link (`auto=1`) starts import once the `instagram-import` flag is on. Other URLs still wait for **Import**.
 
-A development build is required before “Share to Recipeek” from Chrome is reliable. Expo Go may open the app but drop the query string. There is no share-intent plugin installed yet.
+## Instagram
+
+Instagram does not publish Recipe JSON-LD. v1 reads the **caption** and the **cover still** from the public page’s Open Graph tags (`og:description`, `og:image`). The video is not downloaded.
+
+1. Detect `instagram.com/(reel|reels|p|tv)/…` (including `username/reel/…` paths).
+2. If PostHog flag `instagram-import` is off, the Import copy stays hidden and the function returns 403.
+3. `import-recipe` fetches the public page (link-preview User-Agent, then a browser UA if the caption is missing).
+4. Strip the `N likes, M comments - author on Date: "…"` wrapper from `og:description`.
+5. Send the caption through `extractRecipeFromCaption` (`gpt-6-luna`, same JSON as Try with AI / scan).
+6. Download `og:image` as the hero photo (same 4 MB cap as other imports).
+7. Open `/recipe/new` with `source_url` = the Instagram permalink and `source_name` = `@author on Instagram`.
+
+If the caption is shorter than 40 characters, or the model finds no ingredients and no method: **Not enough info in this post to capture a recipe. Try copying it in by hand.**
+
+Private posts, embed-disabled accounts, and pages that only return a login wall: **Instagram would not share that post. It may be private.** Hosted Supabase IPs are more likely to be blocked than a local Docker function on your home connection.
+
+Share from the Instagram app (Android: Share → Recipeek) needs `expo-share-intent` and a **development build**. Expo Go cannot receive that share. Paste still works in Expo Go when the flag is on.
+
+Needs `OPENAI_API_KEY` on the function host, same secret as scan / Try with AI.
+
+## Share to Recipeek
+
+`expo-share-intent` is in `app.json`. Instagram’s share sheet sends `text/plain` that contains the permalink.
+
+1. `src/app/+native-intent.ts` maps the native share URL onto `/import`.
+2. Once signed in, `(app)/_layout.tsx` reads `useShareIntentContext`, pulls the first `http(s)` URL, and navigates to `/import?url=…&auto=1`.
+
+A development build is required (`npx expo run:android` or `npx eas-cli@latest build --profile development`). Expo Go may open `recipeek://import?url=` but drops the query string and cannot show Recipeek in other apps’ share sheets.
 
 ## Task: import a BBC Food recipe
 
@@ -164,14 +191,14 @@ Then invoke the local function with a user JWT, or temporarily call `parseRecipe
 
 ## Scan vs import (same form, different backends)
 
-| | Import (scrape) | Import (Try with AI) | Scan |
-| --- | --- | --- | --- |
-| Input | Page URL | Same URL, user tapped retry | Camera / library photo of a printed page |
-| Function | `import-recipe` `{ url }` | `import-recipe` `{ url, useAi: true }` | `scan-recipe` |
-| Extraction | schema.org JSON-LD + WP Recipe Maker groups | Compacted HTML → `gpt-6-luna` | `gpt-6-luna` vision + JSON schema |
-| Photo | Site’s hero image | Site’s hero image | Crop of page dish, else generated (`gpt-image-2.5-sunburst`) |
-| `sourceName` | Hostname | Hostname | `Scanned page` |
-| Needs `OPENAI_API_KEY` | No | Yes | Yes |
-| PostHog flag `recipe-scan` | No | No | Yes (button hidden and function returns 403 if off) |
+| | Import (scrape) | Import (Try with AI) | Instagram | Scan |
+| --- | --- | --- | --- | --- |
+| Input | Page URL | Same URL, user tapped retry | Reel / post URL (share or paste) | Camera / library photo of a printed page |
+| Function | `import-recipe` `{ url }` | `import-recipe` `{ url, useAi: true }` | `import-recipe` `{ url }` (Instagram branch) | `scan-recipe` |
+| Extraction | schema.org JSON-LD + WP Recipe Maker groups | Compacted HTML → `gpt-6-luna` | Caption from `og:description` → `gpt-6-luna` | `gpt-6-luna` vision + JSON schema |
+| Photo | Site’s hero image | Site’s hero image | `og:image` cover still | Crop of page dish, else generated (`gpt-image-2.5-sunburst`) |
+| `sourceName` | Hostname | Hostname | `@author on Instagram` | `Scanned page` |
+| Needs `OPENAI_API_KEY` | No | Yes | Yes | Yes |
+| PostHog flag | No | No | `instagram-import` (UI hidden and function returns 403 if off) | `recipe-scan` (button hidden and function returns 403 if off) |
 
-Both import modes and scan end at `/recipe/new` through `importedToDraft`. Scan is also documented in [openai.md](./openai.md).
+All of these end at `/recipe/new` through `importedToDraft`. Scan is also documented in [openai.md](./openai.md).

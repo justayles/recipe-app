@@ -1,9 +1,11 @@
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { ShareIntentProvider } from 'expo-share-intent';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import { AppState, useColorScheme, View } from 'react-native';
+import { AppState, Platform, useColorScheme, View } from 'react-native';
 
 import { RecipeekSplash } from '@/components/recipeek-splash';
 import { AuthProvider, useAuth } from '@/lib/auth';
@@ -58,12 +60,17 @@ function RootNavigator() {
   );
 }
 
+const shareIntentDisabled =
+  Platform.OS === 'web' || Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <RecipeekPostHogProvider>
-        <RootNavigator />
-      </RecipeekPostHogProvider>
-    </AuthProvider>
+    <ShareIntentProvider options={{ disabled: shareIntentDisabled, resetOnBackground: true }}>
+      <AuthProvider>
+        <RecipeekPostHogProvider>
+          <RootNavigator />
+        </RecipeekPostHogProvider>
+      </AuthProvider>
+    </ShareIntentProvider>
   );
 }
